@@ -1,0 +1,116 @@
+{
+    "record_id": "9179597d-1d30-4e40-8f88-986530b7b0c5",
+    "conversation_id": "460dbcef-6317-40be-9f96-3de1626a1fb2",
+    "user_id": null,
+    "user_name": null,
+    "app_id": "RAG v1",
+    "perf": {
+        "start_time": "2024-08-18T03:42:50.859019",
+        "end_time": "2024-08-18T03:42:51.422404"
+    },
+    "main_input": "ĐHQG TPHCM thành lập năm bao nhiêu?",
+    "main_output": "Đại học Quốc gia Thành phố Hồ Chí Minh ban đầu được thành lập vào ngày 27 tháng 1 năm 1995.",
+    "main_error": null,
+    "calls": [
+        {
+        "call_id": "6af57be8-bbf2-4d93-86f5-6dc255a10416",
+        "call_name": "Chatbot_Task_GetIntent",
+        "args": {
+            "question": "ĐHQG TPHCM thành lập năm bao nhiêu?",
+            "histories": [
+            "Việt nam có bao nhiêu đại học?",
+            "ĐHQG TPHCM khác gì ĐHQG Hà nội?"
+            ]
+        },
+        "rets": {
+            "intent": "ASK_UNIVERSITY_INFO"
+        },
+        "error": null,
+        "perf": {
+            "start_time": "2024-08-17T03:42:50.859019",
+            "end_time": "2024-08-17T03:42:51.422404"
+        }
+        },
+        {
+        "call_id": "4cf00890-8039-4768-ab9c-03549c197f8f",
+        "call_name": "Chatbot_Task_GetSearchTerm",
+        "args": {
+            "question": "ĐHQG TPHCM thành lập năm bao nhiêu?",
+            "histories": [
+            "Việt nam có bao nhiêu đại học?",
+            "ĐHQG TPHCM khác gì ĐHQG Hà nội?"
+            ]
+        },
+        "rets": {
+            "search_term": "Đại học Quốc gia Thành phố Hồ Chí Minh được thành lập năm nào?"
+        },
+        "error": null,
+        "perf": {
+            "start_time": "2024-08-17T03:42:51.517926",
+            "end_time": "2024-08-17T03:42:52.632229"
+        }
+        },
+        {
+        "call_id": "4cf00890-8039-4768-ab9c-03549c197f8f",
+        "call_name": "Chatbot_Task_GetRelatedDocuments",
+        "args": {
+            "intent": "ASK_UNIVERSITY_INFO",
+            "search_term": "Đại học Quốc gia Thành phố Hồ Chí Minh được thành lập năm nào?"
+        },
+        "rets": {
+            "documents": [
+            "Đại học Quốc gia Thành phố Hồ Chí Minh ban đầu được thành lập vào ngày 27 tháng 1 năm 1995 theo Nghị định 16/CP của Chính phủ trên cơ sở sắp xếp 9 trường đại học",
+            "Hiện nay, Đại học Quốc gia thành phố Hồ Chí Minh có 7 trường đại học thành viên: Trường Đại học Bách khoa, Trường Đại học Khoa học Tự nhiên, Trường Đại học Khoa học Xã hội và Nhân văn, Trường Đại học Quốc tế, Trường Đại học Công nghệ Thông tin, Trường Đại học Kinh tế – Luật, Trường Đại học An Giang, 2 khoa trực thuộc: Khoa Y, Khoa Chính trị - Hành chính và Phân hiệu Đại học Quốc gia Thành phố Hồ Chí Minh tại tỉnh Bến Tre."
+            ]
+        },
+        "error": null,
+        "perf": {
+            "start_time": "2024-08-17T03:42:52.917111",
+            "end_time": "2024-08-17T03:42:53.002934"
+        }
+        },
+        {
+        "call_id": "4cf00890-8039-4768-ab9c-03549c197f8f",
+        "call_name": "Chatbot_Task_GetAnswer",
+        "args": {
+            "question": "ĐHQG TPHCM thành lập năm bao nhiêu?",
+            "documents": [
+            "Đại học Quốc gia Thành phố Hồ Chí Minh ban đầu được thành lập vào ngày 27 tháng 1 năm 1995 theo Nghị định 16/CP của Chính phủ trên cơ sở sắp xếp 9 trường đại học",
+            "Hiện nay, Đại học Quốc gia thành phố Hồ Chí Minh có 7 trường đại học thành viên: Trường Đại học Bách khoa, Trường Đại học Khoa học Tự nhiên, Trường Đại học Khoa học Xã hội và Nhân văn, Trường Đại học Quốc tế, Trường Đại học Công nghệ Thông tin, Trường Đại học Kinh tế – Luật, Trường Đại học An Giang, 2 khoa trực thuộc: Khoa Y, Khoa Chính trị - Hành chính và Phân hiệu Đại học Quốc gia Thành phố Hồ Chí Minh tại tỉnh Bến Tre."
+            ]
+        },
+        "rets": {
+            "answer": "Đại học Quốc gia Thành phố Hồ Chí Minh ban đầu được thành lập vào ngày 27 tháng 1 năm 1995."
+        },
+        "error": null,
+        "perf": {
+            "start_time": "2024-08-17T03:42:53.234234",
+            "end_time": "2024-08-17T03:42:55.456456"
+        }
+        },
+        {
+        "call_id": "4cf00890-8039-4768-ab9c-03549c197f8f",
+        "call_name": "Chatbot_Task_GetFollowUpQuestions",
+        "args": {
+            "search_term": "Đại học Quốc gia Thành phố Hồ Chí Minh được thành lập năm nào?",
+            "answer": "Đại học Quốc gia Thành phố Hồ Chí Minh ban đầu được thành lập vào ngày 27 tháng 1 năm 1995.",
+            "intent": "ASK_UNIVERSITY_INFO",
+            "histories": [
+            "Việt nam có bao nhiêu đại học?",
+            "ĐHQG TPHCM khác gì ĐHQG Hà nội?"
+            ]
+        },
+        "rets": {
+            "questions": [
+            "Đại học Quốc gia Thành phố Hồ Chí Minh có mấy trường thành viên?",
+            "Ai là hiệu trương Đại học Quốc gia Thành phố Hồ Chí Minh?"
+            ]
+        },
+        "error": null,
+        "perf": {
+            "start_time": "2024-08-17T03:42:58.56785",
+            "end_time": "2024-08-17T03:42:59.13257"
+        }
+        }
+    ]
+}

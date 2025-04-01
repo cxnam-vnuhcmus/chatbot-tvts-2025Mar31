@@ -1,0 +1,43 @@
+FROM python:3.9-slim
+
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY KMSDashboard/requirements.txt /app/KMSDashboard/
+RUN pip install --no-cache-dir -r KMSDashboard/requirements.txt
+
+COPY KMSDashboard /app/KMSDashboard
+COPY common /app/common
+COPY conf /app/conf
+COPY assets /app/assets
+COPY templates /app/templates
+
+ENV PYTHONPATH=/app \
+    PANEL_PORT=6804 \
+    BOKEH_ALLOW_WS_ORIGIN="*" \
+    BOKEH_LOG_LEVEL="info" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+RUN useradd -m myuser \
+    && chown -R myuser:myuser /app
+USER myuser
+
+EXPOSE 6804
+
+CMD ["panel", "serve", "KMSDashboard/WebApp/kms_admin.py", \
+    "--address", "0.0.0.0", \
+    "--port", "6804", \
+    "--cookie-secret", "KMS!@#cookie123456secretUITServerPanel",\
+    "--basic-auth", "conf/accounts.json", \
+    "--basic-login-template", "templates/basic_login.html",\
+    "--logout-template", "templates/logout.html",\
+    "--index", "templates/index.html", \
+    "--static-dirs", "assets=assets", \    
+    "--allow-websocket-origin", "*", \
+    "--check-unused-sessions", "3600000"]

@@ -1,0 +1,32 @@
+version: "3"
+
+services:
+  start_up_command:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    env_file:
+      - .env.prod
+    command: flask database init
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    ports:
+      - "6811:6811"
+    env_file:
+      - .env.prod
+    volumes:
+      - ./intents.json:/app/intents.json
+    command: gunicorn -w 2 --bind 0.0.0.0:6811 wsgi:app
+
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    ports:
+      - "6812:6812"
+    env_file:
+      - .env.prod
+    command: panel serve ChatbotUI/WebApp/app2_Chatbot_System.py --port 6812 --allow-websocket-origin="*" --cookie-secret Chatbot!@#cookie123456secretUITServerPanel --basic-auth conf/accounts.json --basic-login-template ChatbotUI/templates/basic_login.html --index ChatbotUI/templates/index.html --static-dirs thumbnails=ChatbotUI/assets/thumbnails assets=ChatbotUI/assets

@@ -1,0 +1,22 @@
+{
+    "user1": {
+        "input": 1,
+        "approve": 0,
+        "unit": "Donvi1"
+    },
+    "user2": {
+        "input": 0,
+        "approve": 0,
+        "unit": "Donvi2"
+    },
+    "admin1": {
+        "input": 1,
+        "approve": 1,
+        "unit": "Donvi1"
+    },
+    "admin2": {
+        "input": 1,
+        "approve": 1,
+        "unit": "Donvi2"
+    }
+}

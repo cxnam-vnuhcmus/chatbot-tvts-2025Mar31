@@ -1,0 +1,19 @@
+panel==1.6
+
+# panel
+# watchfiles
+python-dotenv
+requests
+psycopg2-binary
+SQLAlchemy
+pandas
+numpy
+openai>=1.3.7
+python-jose
+python-Levenshtein>=0.21.1 
+tiktoken  
+Werkzeug
+chromadb==0.5.5
+bokeh
+beautifulsoup4
+

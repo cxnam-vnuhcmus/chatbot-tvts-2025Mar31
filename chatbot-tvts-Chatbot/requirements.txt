@@ -1,0 +1,10 @@
+Flask
+openai
+panel==1.6.0
+# watchfiles
+python-dotenv
+SQLAlchemy
+psycopg2-binary
+# chromadb
+requests
+chromadb==0.5.15

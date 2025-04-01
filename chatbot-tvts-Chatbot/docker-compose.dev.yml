@@ -1,0 +1,57 @@
+version: "3"
+
+services:
+  venv:
+    build:
+      context: .
+      dockerfile: Dockerfile.venv
+    ports:
+      - "8000:8000"
+      - "6811:6811"
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    # depends_on:
+    #   chromadb:
+    #     condition: service_started
+    networks:
+      - llm_network
+
+  # postgres:
+  #   container_name: postgres_container
+  #   image: postgres
+  #   environment:
+  #     POSTGRES_USER: ${POSTGRES_USER:-postgres}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+  #     PGDATA: /data/postgres
+  #   volumes:
+  #     - postgres:/data/postgres
+  #   ports:
+  #     - "25432:5432"
+  #   restart: unless-stopped
+  #   networks:
+  #     - llm_network
+
+  # chromadb:
+  #   image: ghcr.io/chroma-core/chroma:latest
+  #   environment:
+  #     - IS_PERSISTENT=TRUE
+  #   volumes:
+  #     # Default configuration for persist_directory in chromadb/config.py
+  #     # Currently it's located in "/chroma/chroma/"
+  #     - chroma-data:/chroma/chroma/
+  #   ports:
+  #     - "28080:8000"
+  #   networks:
+  #     - llm_network
+
+# volumes:
+#   postgres:
+#     driver: local
+#   chroma-data:
+#     driver: local
+
+networks:
+  llm_network:
+    driver: bridge

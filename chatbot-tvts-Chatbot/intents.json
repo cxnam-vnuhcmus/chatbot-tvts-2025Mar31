@@ -1,0 +1,106 @@
+{
+    "hello_query": {
+        "DESCRIPTION": "User thực hiện hành động chào hỏi xã giao, không yêu cầu thông tin cụ thể.",
+        "NOTE": "Chào hỏi",
+        "ACTION": {
+            "CMD": "ANSWER_TEMPLATE",
+            "TEMPLATES": [
+                "Chào bạn, tôi có thể giúp gì cho bạn không?",
+                "Xin chào, bạn cần tôi giúp gì không?",
+                "Chào bạn, bạn cần tôi giúp gì không?"
+            ]
+        }
+    },
+    "out_of_scope_query": {
+        "DESCRIPTION": "User cung cấp thông tin hoặc yêu cầu không liên quan đến thông tin chung về ĐHQG hoặc thông tin về tuyển sinh, cần chuyển đến bộ phận khác.",
+        "NOTE": "Intent không liên quan đến tư vấn tuyển sinh",
+        "ACTION": {
+            "CMD": "ANSWER_TEMPLATE",
+            "TEMPLATES": [
+                "Thông tin của bạn đã được chuyển đến nhân viên hỗ trợ.",
+                "Yêu cầu của bạn đã được ghi nhận, nhân viên sẽ liên hệ với bạn sớm nhất có thể.",
+                "Cảm ơn bạn đã liên hệ, thông tin của bạn đã được ghi nhận."
+            ]
+        }
+    },
+    "general_query": {
+        "DESCRIPTION": "User yêu cầu thông tin tổng quan về ĐHQG-HCM, các Trường Đại học thành viên, và các đơn vị trực thuộc, bao gồm sứ mệnh, địa chỉ và cơ cấu tổ chức.",
+        "NOTE": "Thông tin chung về ĐHGQ-HCM, Trường thành viên, và các đơn vị trực thuộc",
+        "ACTION": {
+            "CMD": "SEARCH_DOCS",
+            "DB": "uit_2024nov_text-embedding-3-large_gpt"
+        }
+    },
+    "general_admission_query": {
+        "DESCRIPTION": "User muốn biết các thông tin tổng quát về quy trình và yêu cầu tuyển sinh.",
+        "NOTE": "Thông tin tuyển sinh",
+        "ACTION": {
+            "CMD": "SEARCH_DOCS",
+            "DB": "uit_2024nov_text-embedding-3-large_gpt"
+        }
+    },
+    "dormitory_query": {
+        "DESCRIPTION": "User hỏi về thông tin liên quan đến ký túc xá, bao gồm tiện nghi và quy định.",
+        "NOTE": "Thông tin về ký túc xá",
+        "ACTION": {
+            "CMD": "SEARCH_DOCS",
+            "DB": "uit_2024nov_text-embedding-3-large_gpt"
+        }
+    },
+    "scholarship_query": {
+        "DESCRIPTION": "User muốn tìm hiểu về các chương trình học bổng hiện có và cách thức đăng ký.",
+        "NOTE": "Thông tin về học bổng",
+        "ACTION": {
+            "CMD": "SEARCH_DOCS",
+            "DB": "uit_2024nov_text-embedding-3-large_gpt"
+        }
+    },
+    "program_query": {
+        "DESCRIPTION": "User hỏi về các chương trình học, bao gồm nội dung và yêu cầu đầu vào.",
+        "NOTE": "Thông tin về chương trình học",
+        "ACTION": {
+            "CMD": "SEARCH_DOCS",
+            "DB": "uit_2024nov_text-embedding-3-large_gpt"
+        }
+    },
+    "admission_requirements_query": {
+        "DESCRIPTION": "User yêu cầu thông tin về các điều kiện và tiêu chí để được nhận vào trường.",
+        "NOTE": "Thông tin về điều kiện tuyển sinh",
+        "ACTION": {
+            "CMD": "SEARCH_DOCS",
+            "DB": "uit_2024nov_text-embedding-3-large_gpt"
+        }
+    },
+    "admission_timeline_query": {
+        "DESCRIPTION": "User muốn biết thời gian cụ thể cho các đợt tuyển sinh trong năm.",
+        "NOTE": "Thông tin về thời gian tuyển sinh",
+        "ACTION": {
+            "CMD": "SEARCH_DOCS",
+            "DB": "uit_2024nov_text-embedding-3-large_gpt"
+        }
+    },
+    "registration_query": {
+        "DESCRIPTION": "User hỏi về quy trình và hướng dẫn đăng ký tuyển sinh vào trường.",
+        "NOTE": "Thông tin về cách đăng ký",
+        "ACTION": {
+            "CMD": "SEARCH_DOCS",
+            "DB": "uit_2024nov_text-embedding-3-large_gpt"
+        }
+    },
+    "tuition_query": {
+        "DESCRIPTION": "User muốn biết mức học phí cho các chương trình học khác nhau.",
+        "NOTE": "Thông tin về học phí",
+        "ACTION": {
+            "CMD": "SEARCH_DOCS",
+            "DB": "uit_2024nov_text-embedding-3-large_gpt"
+        }
+    },
+    "vnu_hcm_evaluation_query": {
+        "DESCRIPTION": "User muốn hỏi về kỳ thi đánh giá năng lực của ĐHQG-HCM, bao gồm nội dung và yêu cầu.",
+        "NOTE": "Thông tin về đánh giá năng lực ĐHQG-HCM",
+        "ACTION": {
+            "CMD": "SEARCH_DOCS",
+            "DB": "uit_2024nov_text-embedding-3-large_gpt"
+        }
+    }
+}

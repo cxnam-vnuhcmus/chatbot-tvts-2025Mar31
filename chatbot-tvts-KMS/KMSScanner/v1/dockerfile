@@ -1,0 +1,28 @@
+FROM python:3.9-slim
+
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY KMSScanner/v1/requirements.txt /app/KMSScanner/v1/
+RUN pip install --no-cache-dir -r KMSScanner/v1/requirements.txt
+
+COPY KMSScanner /app/KMSScanner
+COPY common /app/common
+
+ENV PYTHONPATH=/app \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+RUN useradd -m myuser \
+    && chown -R myuser:myuser /app
+
+USER myuser
+
+EXPOSE 6803
+
+CMD ["python", "KMSScanner/v1/kms_scanner_api.py"]

@@ -1,0 +1,32 @@
+services:
+  kms-gptprocessor:
+    build:
+      context: .
+      dockerfile: KMSProcessor/v1/dockerfile
+    ports:
+      - "6802:6802"
+    networks:
+      - kms-network
+    env_file: ../.env.prod
+    volumes:
+      - ../.env.prod:/app/.env
+      # - ./app_logs:/app/app_logs
+    restart: unless-stopped
+
+  kms-scanner:
+    build:
+      context: .
+      dockerfile: KMSScanner/v1/dockerfile
+    ports:
+      - "6803:6803"
+    networks:
+      - kms-network
+    env_file: ../.env.prod
+    volumes:
+      - ../.env.prod:/app/.env
+      # - ./app_logs:/app/app_logs
+    restart: unless-stopped
+
+networks:
+  kms-network:
+    driver: bridge

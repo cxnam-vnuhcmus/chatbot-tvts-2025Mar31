@@ -1,0 +1,46 @@
+services:
+  kms-uis:
+    build:
+      context: .
+      dockerfile: kms_uis_dockerfile
+    ports:
+      - "6801:6801"
+    networks:
+      - kms-network
+    env_file: .env
+    volumes:
+      - .env:/app/.env
+      # - ./app_logs:/app/app_logs
+    restart: unless-stopped
+
+  kms-gptprocessor:
+    build:
+      context: .
+      dockerfile: KMSProcessor/v1/dockerfile
+    ports:
+      - "6802:6802"
+    networks:
+      - kms-network
+    env_file: .env
+    volumes:
+      - .env:/app/.env
+      # - ./app_logs:/app/app_logs
+    restart: unless-stopped
+
+  kms-scanner:
+    build:
+      context: .
+      dockerfile: KMSScanner/v1/dockerfile
+    ports:
+      - "6803:6803"
+    networks:
+      - kms-network
+    env_file: .env
+    volumes:
+      - .env:/app/.env
+      # - ./app_logs:/app/app_logs
+    restart: unless-stopped
+
+networks:
+  kms-network:
+    driver: bridge

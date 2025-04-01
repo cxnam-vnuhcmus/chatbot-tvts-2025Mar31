@@ -1,0 +1,17 @@
+version: "3"
+
+services:
+  chatbot-uis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "6822:6822"
+    networks:
+      - chatbot-network
+    env_file: .env.prod
+    restart: unless-stopped
+
+networks:
+  chatbot-network:
+    driver: bridge

@@ -1,0 +1,393 @@
+[
+    {
+      "call_id": "546b4d6d-800d-4da0-9cf6-43ec73ec27bf",
+      "call_name": "GetHistoriesBySessionIdCommand",
+      "args": {
+        "session_id": "7535e9fc-4685-444c-bf8b-8ddfc5aa40cf",
+        "num": 6
+      },
+      "rets": [
+        {
+          "role": "user",
+          "content": "ky thi dgnl la gi"
+        },
+        {
+          "role": "system",
+          "content": "Kỳ thi đánh giá năng lực (ĐGNL) của ĐHQG-HCM là một kỳ thi được tổ chức để đánh giá năng lực cơ bản của thí sinh, làm căn cứ cho việc xét tuyển vào các trường đại học và cao đẳng. Kỳ thi này đã bắt đầu từ năm 2018 và trở nên phổ biến trong tuyển sinh, nhằm đảm bảo tính công bằng trong tiếp cận giáo dục đại học. Đề thi ĐGNL có nhiều nét tương đồng với các đề thi chuẩn hóa quốc tế, qua đó giúp đánh giá chính xác hơn năng lực của thí sinh."
+        }
+      ],
+      "error": "",
+      "perf": {
+        "start_time": "2024-12-15T01:32:50.800256+00:00",
+        "end_time": "2024-12-15T01:32:50.947240+00:00"
+      }
+    },
+    {
+      "call_id": "9e59e3ee-f1f6-4479-8d9f-520626f3913d",
+      "call_name": "IntentCommand",
+      "args": {
+        "question": "thong tin ve dhqg",
+        "histories": ""
+      },
+      "rets": {
+        "intent": "{\"general_query\":\"User yêu cầu thông tin tổng quan về ĐHQG-HCM, các Trường Đại học thành viên, và các đơn vị trực thuộc, bao gồm sứ mệnh, địa chỉ và cơ cấu tổ chức.\"}",
+        "completion": {
+          "id": "chatcmpl-AU7NKgvtWORYsr2CwgJIcap8SxVGI",
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "{\"general_query\":\"User yêu cầu thông tin tổng quan về ĐHQG-HCM, các Trường Đại học thành viên, và các đơn vị trực thuộc, bao gồm sứ mệnh, địa chỉ và cơ cấu tổ chức.\"}",
+                "refusal": null,
+                "role": "assistant"
+              }
+            }
+          ],
+          "created": 1731741554,
+          "model": "gpt-4o-mini-2024-07-18",
+          "object": "chat.completion",
+          "system_fingerprint": "fp_0ba0d124f1",
+          "usage": {
+            "completion_tokens": 49,
+            "prompt_tokens": 437,
+            "total_tokens": 486,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cached_tokens": 0
+            }
+          }
+        },
+        "prompt": "\n    Your goal is to extract information from the user's input and chat history that matches one of the intentions described below. The user input is in Vietnamese.\n\n    Please output the matched intention in JSON format as follows: {<ID>:<DESCRIPTION>}.\n\n    Do not include any clarifying information or additional text.\n\n    List of intentions:\n    'hello_query': 'User thực hiện hành động chào hỏi xã giao, không yêu cầu thông tin cụ thể.'\n'out_of_scope_query': 'User cung cấp thông tin hoặc yêu cầu không liên quan đến thông tin chung về ĐHQG hoặc thông tin về tuyển sinh, cần chuyển đến bộ phận khác.'\n'general_query': 'User yêu cầu thông tin tổng quan về ĐHQG-HCM, các Trường Đại học thành viên, và các đơn vị trực thuộc, bao gồm sứ mệnh, địa chỉ và cơ cấu tổ chức.'\n'general_admission_query': 'User muốn biết các thông tin tổng quát về quy trình và yêu cầu tuyển sinh.'\n'dormitory_query': 'User hỏi về thông tin liên quan đến ký túc xá, bao gồm tiện nghi và quy định.'\n'scholarship_query': 'User muốn tìm hiểu về các chương trình học bổng hiện có và cách thức đăng ký.'\n'program_query': 'User hỏi về các chương trình học, bao gồm nội dung và yêu cầu đầu vào.'\n'admission_requirements_query': 'User yêu cầu thông tin về các điều kiện và tiêu chí để được nhận vào trường.'\n'admission_timeline_query': 'User muốn biết thời gian cụ thể cho các đợt tuyển sinh trong năm.'\n'registration_query': 'User hỏi về quy trình và hướng dẫn đăng ký tuyển sinh vào trường.'\n'tuition_query': 'User muốn biết mức học phí cho các chương trình học khác nhau.'\n'vnu_hcm_evaluation_query': 'User muốn hỏi về kỳ thi đánh giá năng lực của ĐHQG-HCM, bao gồm nội dung và yêu cầu.'\n\n\n    Chat histories:\n    \n    NO YAPPING\n",
+        "intent_payload": {
+          "DESCRIPTION": "User yêu cầu thông tin tổng quan về ĐHQG-HCM, các Trường Đại học thành viên, và các đơn vị trực thuộc, bao gồm sứ mệnh, địa chỉ và cơ cấu tổ chức.",
+          "NOTE": "Thông tin chung về ĐHGQ-HCM, Trường thành viên, và các đơn vị trực thuộc",
+          "ACTION": {
+            "CMD": "SEARCH_DOCS",
+            "DB": "dev_text-embedding-3-large_markdown_docs"
+          }
+        }
+      },
+      "error": "",
+      "perf": {
+        "start_time": "2024-11-16T07:19:13.859586+00:00",
+        "end_time": "2024-11-16T07:19:22.551639+00:00"
+      }
+    },
+    {
+      "call_id": "5e47fb3b-2955-4b92-be51-6c00d87f5cf1",
+      "call_name": "SearchQueryCommand",
+      "args": {
+        "question": "thong tin ve dhqg",
+        "histories": ""
+      },
+      "rets": {
+        "search_terms": [
+          "Thông tin về Đại học Quốc gia Hà Nội?",
+          "Các khoa và chuyên ngành của Đại học Quốc gia TP.HCM là gì?",
+          "Đại học Quốc gia có những chương trình đào tạo nào nổi bật?"
+        ],
+        "completion": {
+          "id": "chatcmpl-AU7NLzKFPqsKvI3YwVCsxfNx7oT6J",
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "<QUERY_1>Thông tin về Đại học Quốc gia Hà Nội?</QUERY_1>\n<QUERY_2>Các khoa và chuyên ngành của Đại học Quốc gia TP.HCM là gì?</QUERY_2>\n<QUERY_3>Đại học Quốc gia có những chương trình đào tạo nào nổi bật?</QUERY_3>",
+                "refusal": null,
+                "role": "assistant"
+              }
+            }
+          ],
+          "created": 1731741555,
+          "model": "gpt-4o-mini-2024-07-18",
+          "object": "chat.completion",
+          "system_fingerprint": "fp_0ba0d124f1",
+          "usage": {
+            "completion_tokens": 68,
+            "prompt_tokens": 144,
+            "total_tokens": 212,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cached_tokens": 0
+            }
+          }
+        },
+        "prompt": "\nYour goal is to generate THREE different prompts from the user's input and chat histories that contains all the information described below.\nThese prompts are used as queries in a vetor store. The output must be warped between tags:\n\n<QUERY_1></QUERY_1>\n<QUERY_2></QUERY_2>\n<QUERY_3></QUERY_3>\n\nPlease only output the question contained the information related to user's input and use the same language of user's input. \nDo not output anything except for the prompt. Do not add any clarifying information. Output must be in text format and follow the intruction specified above.\n\nChat histories:\n\n"
+      },
+      "error": "",
+      "perf": {
+        "start_time": "2024-11-16T07:19:13.859586+00:00",
+        "end_time": "2024-11-16T07:19:22.551639+00:00"
+      }
+    },
+    {
+      "call_id": "c7d93683-5ec8-4c63-9827-d6cc0a782d1e",
+      "call_name": "SearchDocsCommand",
+      "args": {
+        "intent": "{\"general_query\":\"User yêu cầu thông tin tổng quan về ĐHQG-HCM, các Trường Đại học thành viên, và các đơn vị trực thuộc, bao gồm sứ mệnh, địa chỉ và cơ cấu tổ chức.\"}",
+        "search_terms": [
+          "Thông tin về Đại học Quốc gia Hà Nội?",
+          "Các khoa và chuyên ngành của Đại học Quốc gia TP.HCM là gì?",
+          "Đại học Quốc gia có những chương trình đào tạo nào nổi bật?"
+        ],
+        "DB": "dev_text-embedding-3-large_markdown_docs"
+      },
+      "rets": {
+        "documents": [
+          "## Giới thiệu về Đại học Quốc gia Thành phố Hồ Chí Minh (ĐHQG-HCM)\n\nĐại học Quốc gia Thành phố Hồ Chí Minh, viết tắt là ĐHQG-HCM, là một **trung tâm đào tạo đại học** và **nghiên cứu khoa học công nghệ** đa ngành, đa lĩnh vực, chất lượng cao, đạt trình độ tiên tiến. ĐHQG-HCM nằm ở khu vực phía đông của Thành phố Hồ Chí Minh, một trong những đô thị phát triển nhất Việt Nam.\n\n## Lịch sử và Mục tiêu\n\n- ĐHQG-HCM được Chính phủ Việt Nam thành lập vào năm 1995.\n- Mục tiêu của ĐHQG-HCM là xây dựng một trung tâm đào tạo đại học và nghiên cứu khoa học công nghệ đa ngành, chất lượng cao, nhằm hỗ trợ hệ thống giáo dục đại học và đáp ứng nhu cầu phát triển kinh tế - xã hội.\n\n## Quy mô và Cơ cấu Tổ chức\n\n- Tổng diện tích của ĐHQG-HCM là 6.437 hecta, theo mô hình **đô thị đại học hiện đại**.\n- ĐHQG-HCM là một trong những cơ sở giáo dục lớn nhất Việt Nam, bao gồm 36 đơn vị:\n - 8 trường đại học thành viên:\n - Trường Đại học Bách Khoa\n - Trường Đại học Khoa học Tự nhiên\n - Trường Đại học Khoa học Xã hội và Nhân văn\n - Trường Đại học Quốc tế\n - Trường Đại học Công nghệ Thông tin\n - Trường Đại học Kinh tế - Luật\n - Trường Đại học An Giang\n - Trường Đại học Khoa học Sức khỏe\n - 1 viện nghiên cứu khoa học thành viên: Viện Môi trường và Tài nguyên\n - 1 phân hiệu tại tỉnh Bến Tre\n - 25 đơn vị trực thuộc, bao gồm các tổ chức khoa học và công nghệ, thư viện, và các tổ chức phục vụ đào tạo, dịch vụ.\n\n## Đào tạo và Nghiên cứu\n\n- ĐHQG-HCM hiện đang đào tạo:\n - 93.939 sinh viên đại học\n - 7.122 học viên cao học\n - 995 nghiên cứu sinh\n- Đội ngũ học giả của ĐHQG-HCM bao gồm:\n - 34 giáo sư\n - 312 phó giáo sư\n - 1.197 tiến sĩ\n- Chương trình đào tạo của ĐHQG-HCM bao gồm nhiều lĩnh vực:\n - Khoa học tự nhiên\n - Khoa học xã hội\n - Kỹ thuật\n - Công nghệ\n - Quản lý\n - Kinh tế\n - Luật\n - Khoa học sức khỏe\n - Khoa học nông nghiệp\n- Cụ thể, ĐHQG-HCM có:\n - 138 ngành đại học\n - 118 ngành thạc sĩ\n - 86 ngành tiến sĩ\n\n## Xếp hạng và Danh tiếng\n\n- ĐHQG-HCM đặt mục tiêu trở thành **hệ thống đại học nghiên cứu** hàng đầu tại châu Á.\n- Trong nhiều năm liên tiếp, ĐHQG-HCM đã được tổ chức giáo dục Quacquarelli Symonds (QS) xếp hạng trong top 150 đại học hàng đầu châu Á.\n- Từ năm 2019, ĐHQG-HCM duy trì thứ hạng từ 701-750 trong số hơn 1.000 trường đại học hàng đầu thuộc 82 quốc gia, theo đánh giá của QS.\n\n## Cam kết với Cộng đồng và Phát triển Xã hội\n\n- ĐHQG-HCM xác định \"gắn kết và phục vụ cộng đồng\" là một trong những **giá trị cốt lõi** của mình.\n- Từ năm 2016 đến nay, ĐHQG-HCM đã thực hiện hơn 3.000 hợp đồng chuyển giao công nghệ, với tổng doanh thu trung bình hàng năm khoảng 250 tỷ đồng.\n- ĐHQG-HCM đã thiết lập mạng lưới đối tác học thuật quốc tế với các tổ chức giáo dục hàng đầu từ châu Á, châu Âu, châu Mỹ và châu Úc, nhằm cập nhật các xu hướng giáo dục tiên tiến trong hoạt động đào tạo và nghiên cứu khoa học.\n\n## Sứ mệnh\n\n- ĐHQG-HCM cam kết thúc đẩy **tiến bộ xã hội** và theo đuổi lý tưởng mà các đại học hàng đầu thế giới đang hướng tới."
+        ],
+        "nodes": {
+          "ids": [
+            [
+              "doc_20240916175833_0",
+              "doc_20240918220611_0",
+              "doc_20240918231724_0"
+            ],
+            [
+              "doc_20240916175833_0",
+              "doc_20240918231724_0",
+              "doc_20240918220611_0"
+            ],
+            [
+              "doc_20240916175833_0",
+              "doc_20240918221323_0",
+              "doc_20240918231724_0"
+            ]
+          ],
+          "distances": [
+            [
+              0.9959926707621131,
+              1.0899089029924445,
+              1.137994444552519
+            ],
+            [
+              0.8177374150736302,
+              0.9295057208275234,
+              0.932161673681167
+            ],
+            [
+              1.0478146993023523,
+              1.1179162763063686,
+              1.1470873323812023
+            ]
+          ],
+          "embeddings": null,
+          "metadatas": [
+            [
+              {
+                "chunk_index": 0,
+                "id": "doc_20240916175833_0",
+                "original_id": "doc_20240916175833",
+                "status": "Đã duyệt",
+                "unit": "Donvi1"
+              },
+              {
+                "chunk_index": 0,
+                "id": "doc_20240918220611_0",
+                "original_id": "doc_20240918220611",
+                "status": "Đã duyệt",
+                "unit": "Donvi1"
+              },
+              {
+                "chunk_index": 0,
+                "id": "doc_20240918231724_0",
+                "original_id": "doc_20240918231724",
+                "status": "Đã duyệt",
+                "unit": "Donvi1"
+              }
+            ],
+            [
+              {
+                "chunk_index": 0,
+                "id": "doc_20240916175833_0",
+                "original_id": "doc_20240916175833",
+                "status": "Đã duyệt",
+                "unit": "Donvi1"
+              },
+              {
+                "chunk_index": 0,
+                "id": "doc_20240918231724_0",
+                "original_id": "doc_20240918231724",
+                "status": "Đã duyệt",
+                "unit": "Donvi1"
+              },
+              {
+                "chunk_index": 0,
+                "id": "doc_20240918220611_0",
+                "original_id": "doc_20240918220611",
+                "status": "Đã duyệt",
+                "unit": "Donvi1"
+              }
+            ],
+            [
+              {
+                "chunk_index": 0,
+                "id": "doc_20240916175833_0",
+                "original_id": "doc_20240916175833",
+                "status": "Đã duyệt",
+                "unit": "Donvi1"
+              },
+              {
+                "chunk_index": 0,
+                "id": "doc_20240918221323_0",
+                "original_id": "doc_20240918221323",
+                "status": "Đã duyệt",
+                "unit": "Donvi1"
+              },
+              {
+                "chunk_index": 0,
+                "id": "doc_20240918231724_0",
+                "original_id": "doc_20240918231724",
+                "status": "Đã duyệt",
+                "unit": "Donvi1"
+              }
+            ]
+          ],
+          "documents": [
+            [
+              "## Giới thiệu về Đại học Quốc gia Thành phố Hồ Chí Minh (ĐHQG-HCM)\n\nĐại học Quốc gia Thành phố Hồ Chí Minh, viết tắt là ĐHQG-HCM, là một **trung tâm đào tạo đại học** và **nghiên cứu khoa học công nghệ** đa ngành, đa lĩnh vực, chất lượng cao, đạt trình độ tiên tiến. ĐHQG-HCM nằm ở khu vực phía đông của Thành phố Hồ Chí Minh, một trong những đô thị phát triển nhất Việt Nam.\n\n## Lịch sử và Mục tiêu\n\n- ĐHQG-HCM được Chính phủ Việt Nam thành lập vào năm 1995.\n- Mục tiêu của ĐHQG-HCM là xây dựng một trung tâm đào tạo đại học và nghiên cứu khoa học công nghệ đa ngành, chất lượng cao, nhằm hỗ trợ hệ thống giáo dục đại học và đáp ứng nhu cầu phát triển kinh tế - xã hội.\n\n## Quy mô và Cơ cấu Tổ chức\n\n- Tổng diện tích của ĐHQG-HCM là 6.437 hecta, theo mô hình **đô thị đại học hiện đại**.\n- ĐHQG-HCM là một trong những cơ sở giáo dục lớn nhất Việt Nam, bao gồm 36 đơn vị:\n - 8 trường đại học thành viên:\n - Trường Đại học Bách Khoa\n - Trường Đại học Khoa học Tự nhiên\n - Trường Đại học Khoa học Xã hội và Nhân văn\n - Trường Đại học Quốc tế\n - Trường Đại học Công nghệ Thông tin\n - Trường Đại học Kinh tế - Luật\n - Trường Đại học An Giang\n - Trường Đại học Khoa học Sức khỏe\n - 1 viện nghiên cứu khoa học thành viên: Viện Môi trường và Tài nguyên\n - 1 phân hiệu tại tỉnh Bến Tre\n - 25 đơn vị trực thuộc, bao gồm các tổ chức khoa học và công nghệ, thư viện, và các tổ chức phục vụ đào tạo, dịch vụ.\n\n## Đào tạo và Nghiên cứu\n\n- ĐHQG-HCM hiện đang đào tạo:\n - 93.939 sinh viên đại học\n - 7.122 học viên cao học\n - 995 nghiên cứu sinh\n- Đội ngũ học giả của ĐHQG-HCM bao gồm:\n - 34 giáo sư\n - 312 phó giáo sư\n - 1.197 tiến sĩ\n- Chương trình đào tạo của ĐHQG-HCM bao gồm nhiều lĩnh vực:\n - Khoa học tự nhiên\n - Khoa học xã hội\n - Kỹ thuật\n - Công nghệ\n - Quản lý\n - Kinh tế\n - Luật\n - Khoa học sức khỏe\n - Khoa học nông nghiệp\n- Cụ thể, ĐHQG-HCM có:\n - 138 ngành đại học\n - 118 ngành thạc sĩ\n - 86 ngành tiến sĩ\n\n## Xếp hạng và Danh tiếng\n\n- ĐHQG-HCM đặt mục tiêu trở thành **hệ thống đại học nghiên cứu** hàng đầu tại châu Á.\n- Trong nhiều năm liên tiếp, ĐHQG-HCM đã được tổ chức giáo dục Quacquarelli Symonds (QS) xếp hạng trong top 150 đại học hàng đầu châu Á.\n- Từ năm 2019, ĐHQG-HCM duy trì thứ hạng từ 701-750 trong số hơn 1.000 trường đại học hàng đầu thuộc 82 quốc gia, theo đánh giá của QS.\n\n## Cam kết với Cộng đồng và Phát triển Xã hội\n\n- ĐHQG-HCM xác định \"gắn kết và phục vụ cộng đồng\" là một trong những **giá trị cốt lõi** của mình.\n- Từ năm 2016 đến nay, ĐHQG-HCM đã thực hiện hơn 3.000 hợp đồng chuyển giao công nghệ, với tổng doanh thu trung bình hàng năm khoảng 250 tỷ đồng.\n- ĐHQG-HCM đã thiết lập mạng lưới đối tác học thuật quốc tế với các tổ chức giáo dục hàng đầu từ châu Á, châu Âu, châu Mỹ và châu Úc, nhằm cập nhật các xu hướng giáo dục tiên tiến trong hoạt động đào tạo và nghiên cứu khoa học.\n\n## Sứ mệnh\n\n- ĐHQG-HCM cam kết thúc đẩy **tiến bộ xã hội** và theo đuổi lý tưởng mà các đại học hàng đầu thế giới đang hướng tới.",
+              "giới thiệu về đhqghcm đhqghcm là một trung tâm đào tạo đại học sau đại học và nghiên cứu khoa học công nghệ đa ngành đa lĩnh vực chất lượng cao đạt trình độ tiên tiến. lịch sử hình thành đhqghcm được chính phủ việt nam thành lập vào năm 1995. mục tiêu thành lập là tạo ra một trung tâm đào tạo đại học sau đại học và nghiên cứu khoa học công nghệ đa ngành đa lĩnh vực chất lượng cao. đhqghcm đóng vai trò nòng cốt cho hệ thống giáo dục đại học tại việt nam đáp ứng nhu cầu phát triển kinh tế xã hội. diện tích và cơ sở vật chất đhqghcm có tổng diện tích 6437 hecta theo mô hình đô thị đại học hiện đại. đây là một trong những cơ sở giáo dục lớn nhất việt nam với 36 đơn vị bao gồm 8 trường đại học thành viên trường đại học bách khoa trường đại học khoa học tự nhiên trường đại học khoa học xã hội và nhân văn trường đại học quốc tế trường đại học công nghệ thông tin trường đại học kinh tế luật trường đại học an giang trường đại học khoa học sức khỏe 1 viện nghiên cứu khoa học thành viên viện môi trường và tài nguyên 1 phân hiệu tại tỉnh bến tre 25 đơn vị trực thuộc các tổ chức khoa học và công nghệ thư viện tổ chức phục vụ đào tạo và dịch vụ. quy mô đào tạo đhqghcm đào tạo 93.939 sinh viên đại học 7.122 học viên cao học 995 nghiên cứu sinh đội ngũ học giả bao gồm 34 giáo sư 312 phó giáo sư 1.197 tiến sĩ chương trình đào tạo chương trình đào tạo của đhqghcm bao gồm các lĩnh vực khoa học tự nhiên khoa học xã hội kỹ thuật công nghệ quản lý kinh tế luật khoa học sức khỏe khoa học nông nghiệp các mức độ đào tạo bao gồm đại học 138 ngành thạc sĩ 118 ngành tiến sĩ 86 ngành tầm nhìn và xếp hạng đhqghcm đặt mục tiêu trở thành hệ thống đại học nghiên cứu hàng đầu châu á. trong nhiều năm liên tiếp đhqghcm được tổ chức giáo dục quacquarelli symonds asia xếp hạng trong top 150 đại học hàng đầu châu á. từ năm 2019 đhqghcm duy trì thứ hạng thuộc top 701750 theo đánh giá của tổ chức giáo dục quacquarelli symonds qs anh quốc. giá trị cốt lõi gắn kết và phục vụ cộng đồng là một trong những giá trị cốt lõi mà đhqghcm xây dựng. từ năm 2016 đến nay đhqghcm đã thực hiện trên 3.000 hợp đồng chuyển giao công nghệ với tổng doanh thu trung bình hàng năm khoảng 250 tỷ đồng. hợp tác quốc tế đhqghcm có mạng lưới đối tác học thuật quốc tế với các tổ chức giáo dục hàng đầu từ châu á châu âu châu mỹ châu úc đhqghcm chủ động cập nhật các xu hướng giáo dục tiến bộ trong hoạt động đào tạo và nghiên cứu khoa học nhằm nâng cao vị thế và uy tín trong cộng đồng học thuật quốc tế. sứ mạng thúc đẩy tiến bộ xã hội là lý tưởng mà các đại học hàng đầu thế giới theo đuổi. đây cũng chính là sứ mạng mà đhqghcm cam kết thực hiện.",
+              "giới thiệu về đhqghcm đhqghcm là một trung tâm đào tạo đại học sau đại học và nghiên cứu khoa học công nghệ đa ngành đa lĩnh vực chất lượng cao đạt trình độ tiên tiến. đhqghcm nằm ở khu vực phía đông tp.hcm đô thị phát triển bậc nhất việt nam. chính phủ việt nam thành lập đhqghcm vào năm 1995 nhằm kiến tạo một trung tâm đào tạo đại học sau đại học và nghiên cứu khoa học công nghệ đa ngành đa lĩnh vực chất lượng cao đạt trình độ tiên tiến làm nòng cốt cho hệ thống giáo dục đại học đáp ứng nhu cầu phát triển kinh tế xã hội. quy mô và cấu trúc tổng diện tích 6437 hecta theo mô hình đô thị đại học hiện đại. cơ sở giáo dục lớn nhất đhqghcm là một trong những cơ sở giáo dục lớn nhất việt nam với 36 đơn vị. 8 trường đại học thành viên trường đại học bách khoa trường đại học khoa học tự nhiên trường đại học khoa học xã hội và nhân văn trường đại học quốc tế trường đại học công nghệ thông tin trường đại học kinh tế luật trường đại học an giang trường đại học khoa học sức khoẻ 1 viện nghiên cứu khoa học thành viên viện môi trường và tài nguyên 1 phân hiệu tại tỉnh bến tre 25 đơn vị trực thuộc các tổ chức khoa học và công nghệ thư viện các tổ chức phục vụ đào tạo dịch vụ. đào tạo và nghiên cứu đhqghcm đào tạo 93.939 sinh viên đại học 7.122 học viên cao học 995 nghiên cứu sinh đội ngũ học giả bao gồm 34 giáo sư 312 phó giáo sư 1.197 tiến sĩ chương trình đào tạo của đhqghcm gồm các lĩnh vực khoa học tự nhiên khoa học xã hội kỹ thuật công nghệ quản lý kinh tế luật khoa học sức khỏe khoa học nông nghiệp trình độ đào tạo đại học 138 ngành thạc sĩ 118 ngành tiến sĩ 86 ngành thành tích và tầm nhìn xác định tầm nhìn trở thành hệ thống đại học nghiên cứu trong tốp đầu châu á đhqghcm nhiều năm liên tiếp được tổ chức giáo dục quacquarelli symonds asia xếp hạng thuộc top 150 đh hàng đầu châu lục này. từ năm 2019 đhqghcm duy trì thứ hạng thuộc top 701750 do tổ chức giáo dục quacquarelli symonds qs anh quốc đánh giá trên 1.000 trường đại học hàng đầu thuộc 82 quốc gia. giá trị cốt lõi và cam kết đhqghcm gắn kết và phục vụ cộng đồng là một trong những giá trị cốt lõi mà đhqghcm xây dựng. từ năm 2016 đến nay toàn đhqghcm thực hiện trên 3.000 hợp đồng chuyển giao công nghệ với tổng doanh thu trung bình hằng năm đạt khoảng 250 tỷ đồng. cùng với mạng lưới đối tác học thuật quốc tế là các tổ chức giáo dục hàng đầu từ châu á châu âu châu mỹ và châu úc đhqghcm đã chủ động cập nhật các xu hướng giáo dục tiến bộ nhất trong hoạt động đào tạo nghiên cứu khoa học nhằm nâng cao vị thế và uy tín trong cộng đồng học thuật quốc tế. thúc đẩy tiến bộ xã hội là lý tưởng mà các đại học hàng đầu thế giới theo đuổi. đây cũng chính là sứ mạng mà đhqghcm cam kết thực hiện."
+            ],
+            [
+              "## Giới thiệu về Đại học Quốc gia Thành phố Hồ Chí Minh (ĐHQG-HCM)\n\nĐại học Quốc gia Thành phố Hồ Chí Minh, viết tắt là ĐHQG-HCM, là một **trung tâm đào tạo đại học** và **nghiên cứu khoa học công nghệ** đa ngành, đa lĩnh vực, chất lượng cao, đạt trình độ tiên tiến. ĐHQG-HCM nằm ở khu vực phía đông của Thành phố Hồ Chí Minh, một trong những đô thị phát triển nhất Việt Nam.\n\n## Lịch sử và Mục tiêu\n\n- ĐHQG-HCM được Chính phủ Việt Nam thành lập vào năm 1995.\n- Mục tiêu của ĐHQG-HCM là xây dựng một trung tâm đào tạo đại học và nghiên cứu khoa học công nghệ đa ngành, chất lượng cao, nhằm hỗ trợ hệ thống giáo dục đại học và đáp ứng nhu cầu phát triển kinh tế - xã hội.\n\n## Quy mô và Cơ cấu Tổ chức\n\n- Tổng diện tích của ĐHQG-HCM là 6.437 hecta, theo mô hình **đô thị đại học hiện đại**.\n- ĐHQG-HCM là một trong những cơ sở giáo dục lớn nhất Việt Nam, bao gồm 36 đơn vị:\n - 8 trường đại học thành viên:\n - Trường Đại học Bách Khoa\n - Trường Đại học Khoa học Tự nhiên\n - Trường Đại học Khoa học Xã hội và Nhân văn\n - Trường Đại học Quốc tế\n - Trường Đại học Công nghệ Thông tin\n - Trường Đại học Kinh tế - Luật\n - Trường Đại học An Giang\n - Trường Đại học Khoa học Sức khỏe\n - 1 viện nghiên cứu khoa học thành viên: Viện Môi trường và Tài nguyên\n - 1 phân hiệu tại tỉnh Bến Tre\n - 25 đơn vị trực thuộc, bao gồm các tổ chức khoa học và công nghệ, thư viện, và các tổ chức phục vụ đào tạo, dịch vụ.\n\n## Đào tạo và Nghiên cứu\n\n- ĐHQG-HCM hiện đang đào tạo:\n - 93.939 sinh viên đại học\n - 7.122 học viên cao học\n - 995 nghiên cứu sinh\n- Đội ngũ học giả của ĐHQG-HCM bao gồm:\n - 34 giáo sư\n - 312 phó giáo sư\n - 1.197 tiến sĩ\n- Chương trình đào tạo của ĐHQG-HCM bao gồm nhiều lĩnh vực:\n - Khoa học tự nhiên\n - Khoa học xã hội\n - Kỹ thuật\n - Công nghệ\n - Quản lý\n - Kinh tế\n - Luật\n - Khoa học sức khỏe\n - Khoa học nông nghiệp\n- Cụ thể, ĐHQG-HCM có:\n - 138 ngành đại học\n - 118 ngành thạc sĩ\n - 86 ngành tiến sĩ\n\n## Xếp hạng và Danh tiếng\n\n- ĐHQG-HCM đặt mục tiêu trở thành **hệ thống đại học nghiên cứu** hàng đầu tại châu Á.\n- Trong nhiều năm liên tiếp, ĐHQG-HCM đã được tổ chức giáo dục Quacquarelli Symonds (QS) xếp hạng trong top 150 đại học hàng đầu châu Á.\n- Từ năm 2019, ĐHQG-HCM duy trì thứ hạng từ 701-750 trong số hơn 1.000 trường đại học hàng đầu thuộc 82 quốc gia, theo đánh giá của QS.\n\n## Cam kết với Cộng đồng và Phát triển Xã hội\n\n- ĐHQG-HCM xác định \"gắn kết và phục vụ cộng đồng\" là một trong những **giá trị cốt lõi** của mình.\n- Từ năm 2016 đến nay, ĐHQG-HCM đã thực hiện hơn 3.000 hợp đồng chuyển giao công nghệ, với tổng doanh thu trung bình hàng năm khoảng 250 tỷ đồng.\n- ĐHQG-HCM đã thiết lập mạng lưới đối tác học thuật quốc tế với các tổ chức giáo dục hàng đầu từ châu Á, châu Âu, châu Mỹ và châu Úc, nhằm cập nhật các xu hướng giáo dục tiên tiến trong hoạt động đào tạo và nghiên cứu khoa học.\n\n## Sứ mệnh\n\n- ĐHQG-HCM cam kết thúc đẩy **tiến bộ xã hội** và theo đuổi lý tưởng mà các đại học hàng đầu thế giới đang hướng tới.",
+              "giới thiệu về đhqghcm đhqghcm là một trung tâm đào tạo đại học sau đại học và nghiên cứu khoa học công nghệ đa ngành đa lĩnh vực chất lượng cao đạt trình độ tiên tiến. đhqghcm nằm ở khu vực phía đông tp.hcm đô thị phát triển bậc nhất việt nam. chính phủ việt nam thành lập đhqghcm vào năm 1995 nhằm kiến tạo một trung tâm đào tạo đại học sau đại học và nghiên cứu khoa học công nghệ đa ngành đa lĩnh vực chất lượng cao đạt trình độ tiên tiến làm nòng cốt cho hệ thống giáo dục đại học đáp ứng nhu cầu phát triển kinh tế xã hội. quy mô và cấu trúc tổng diện tích 6437 hecta theo mô hình đô thị đại học hiện đại. cơ sở giáo dục lớn nhất đhqghcm là một trong những cơ sở giáo dục lớn nhất việt nam với 36 đơn vị. 8 trường đại học thành viên trường đại học bách khoa trường đại học khoa học tự nhiên trường đại học khoa học xã hội và nhân văn trường đại học quốc tế trường đại học công nghệ thông tin trường đại học kinh tế luật trường đại học an giang trường đại học khoa học sức khoẻ 1 viện nghiên cứu khoa học thành viên viện môi trường và tài nguyên 1 phân hiệu tại tỉnh bến tre 25 đơn vị trực thuộc các tổ chức khoa học và công nghệ thư viện các tổ chức phục vụ đào tạo dịch vụ. đào tạo và nghiên cứu đhqghcm đào tạo 93.939 sinh viên đại học 7.122 học viên cao học 995 nghiên cứu sinh đội ngũ học giả bao gồm 34 giáo sư 312 phó giáo sư 1.197 tiến sĩ chương trình đào tạo của đhqghcm gồm các lĩnh vực khoa học tự nhiên khoa học xã hội kỹ thuật công nghệ quản lý kinh tế luật khoa học sức khỏe khoa học nông nghiệp trình độ đào tạo đại học 138 ngành thạc sĩ 118 ngành tiến sĩ 86 ngành thành tích và tầm nhìn xác định tầm nhìn trở thành hệ thống đại học nghiên cứu trong tốp đầu châu á đhqghcm nhiều năm liên tiếp được tổ chức giáo dục quacquarelli symonds asia xếp hạng thuộc top 150 đh hàng đầu châu lục này. từ năm 2019 đhqghcm duy trì thứ hạng thuộc top 701750 do tổ chức giáo dục quacquarelli symonds qs anh quốc đánh giá trên 1.000 trường đại học hàng đầu thuộc 82 quốc gia. giá trị cốt lõi và cam kết đhqghcm gắn kết và phục vụ cộng đồng là một trong những giá trị cốt lõi mà đhqghcm xây dựng. từ năm 2016 đến nay toàn đhqghcm thực hiện trên 3.000 hợp đồng chuyển giao công nghệ với tổng doanh thu trung bình hằng năm đạt khoảng 250 tỷ đồng. cùng với mạng lưới đối tác học thuật quốc tế là các tổ chức giáo dục hàng đầu từ châu á châu âu châu mỹ và châu úc đhqghcm đã chủ động cập nhật các xu hướng giáo dục tiến bộ nhất trong hoạt động đào tạo nghiên cứu khoa học nhằm nâng cao vị thế và uy tín trong cộng đồng học thuật quốc tế. thúc đẩy tiến bộ xã hội là lý tưởng mà các đại học hàng đầu thế giới theo đuổi. đây cũng chính là sứ mạng mà đhqghcm cam kết thực hiện.",
+              "giới thiệu về đhqghcm đhqghcm là một trung tâm đào tạo đại học sau đại học và nghiên cứu khoa học công nghệ đa ngành đa lĩnh vực chất lượng cao đạt trình độ tiên tiến. lịch sử hình thành đhqghcm được chính phủ việt nam thành lập vào năm 1995. mục tiêu thành lập là tạo ra một trung tâm đào tạo đại học sau đại học và nghiên cứu khoa học công nghệ đa ngành đa lĩnh vực chất lượng cao. đhqghcm đóng vai trò nòng cốt cho hệ thống giáo dục đại học tại việt nam đáp ứng nhu cầu phát triển kinh tế xã hội. diện tích và cơ sở vật chất đhqghcm có tổng diện tích 6437 hecta theo mô hình đô thị đại học hiện đại. đây là một trong những cơ sở giáo dục lớn nhất việt nam với 36 đơn vị bao gồm 8 trường đại học thành viên trường đại học bách khoa trường đại học khoa học tự nhiên trường đại học khoa học xã hội và nhân văn trường đại học quốc tế trường đại học công nghệ thông tin trường đại học kinh tế luật trường đại học an giang trường đại học khoa học sức khỏe 1 viện nghiên cứu khoa học thành viên viện môi trường và tài nguyên 1 phân hiệu tại tỉnh bến tre 25 đơn vị trực thuộc các tổ chức khoa học và công nghệ thư viện tổ chức phục vụ đào tạo và dịch vụ. quy mô đào tạo đhqghcm đào tạo 93.939 sinh viên đại học 7.122 học viên cao học 995 nghiên cứu sinh đội ngũ học giả bao gồm 34 giáo sư 312 phó giáo sư 1.197 tiến sĩ chương trình đào tạo chương trình đào tạo của đhqghcm bao gồm các lĩnh vực khoa học tự nhiên khoa học xã hội kỹ thuật công nghệ quản lý kinh tế luật khoa học sức khỏe khoa học nông nghiệp các mức độ đào tạo bao gồm đại học 138 ngành thạc sĩ 118 ngành tiến sĩ 86 ngành tầm nhìn và xếp hạng đhqghcm đặt mục tiêu trở thành hệ thống đại học nghiên cứu hàng đầu châu á. trong nhiều năm liên tiếp đhqghcm được tổ chức giáo dục quacquarelli symonds asia xếp hạng trong top 150 đại học hàng đầu châu á. từ năm 2019 đhqghcm duy trì thứ hạng thuộc top 701750 theo đánh giá của tổ chức giáo dục quacquarelli symonds qs anh quốc. giá trị cốt lõi gắn kết và phục vụ cộng đồng là một trong những giá trị cốt lõi mà đhqghcm xây dựng. từ năm 2016 đến nay đhqghcm đã thực hiện trên 3.000 hợp đồng chuyển giao công nghệ với tổng doanh thu trung bình hàng năm khoảng 250 tỷ đồng. hợp tác quốc tế đhqghcm có mạng lưới đối tác học thuật quốc tế với các tổ chức giáo dục hàng đầu từ châu á châu âu châu mỹ châu úc đhqghcm chủ động cập nhật các xu hướng giáo dục tiến bộ trong hoạt động đào tạo và nghiên cứu khoa học nhằm nâng cao vị thế và uy tín trong cộng đồng học thuật quốc tế. sứ mạng thúc đẩy tiến bộ xã hội là lý tưởng mà các đại học hàng đầu thế giới theo đuổi. đây cũng chính là sứ mạng mà đhqghcm cam kết thực hiện."
+            ],
+            [
+              "## Giới thiệu về Đại học Quốc gia Thành phố Hồ Chí Minh (ĐHQG-HCM)\n\nĐại học Quốc gia Thành phố Hồ Chí Minh, viết tắt là ĐHQG-HCM, là một **trung tâm đào tạo đại học** và **nghiên cứu khoa học công nghệ** đa ngành, đa lĩnh vực, chất lượng cao, đạt trình độ tiên tiến. ĐHQG-HCM nằm ở khu vực phía đông của Thành phố Hồ Chí Minh, một trong những đô thị phát triển nhất Việt Nam.\n\n## Lịch sử và Mục tiêu\n\n- ĐHQG-HCM được Chính phủ Việt Nam thành lập vào năm 1995.\n- Mục tiêu của ĐHQG-HCM là xây dựng một trung tâm đào tạo đại học và nghiên cứu khoa học công nghệ đa ngành, chất lượng cao, nhằm hỗ trợ hệ thống giáo dục đại học và đáp ứng nhu cầu phát triển kinh tế - xã hội.\n\n## Quy mô và Cơ cấu Tổ chức\n\n- Tổng diện tích của ĐHQG-HCM là 6.437 hecta, theo mô hình **đô thị đại học hiện đại**.\n- ĐHQG-HCM là một trong những cơ sở giáo dục lớn nhất Việt Nam, bao gồm 36 đơn vị:\n - 8 trường đại học thành viên:\n - Trường Đại học Bách Khoa\n - Trường Đại học Khoa học Tự nhiên\n - Trường Đại học Khoa học Xã hội và Nhân văn\n - Trường Đại học Quốc tế\n - Trường Đại học Công nghệ Thông tin\n - Trường Đại học Kinh tế - Luật\n - Trường Đại học An Giang\n - Trường Đại học Khoa học Sức khỏe\n - 1 viện nghiên cứu khoa học thành viên: Viện Môi trường và Tài nguyên\n - 1 phân hiệu tại tỉnh Bến Tre\n - 25 đơn vị trực thuộc, bao gồm các tổ chức khoa học và công nghệ, thư viện, và các tổ chức phục vụ đào tạo, dịch vụ.\n\n## Đào tạo và Nghiên cứu\n\n- ĐHQG-HCM hiện đang đào tạo:\n - 93.939 sinh viên đại học\n - 7.122 học viên cao học\n - 995 nghiên cứu sinh\n- Đội ngũ học giả của ĐHQG-HCM bao gồm:\n - 34 giáo sư\n - 312 phó giáo sư\n - 1.197 tiến sĩ\n- Chương trình đào tạo của ĐHQG-HCM bao gồm nhiều lĩnh vực:\n - Khoa học tự nhiên\n - Khoa học xã hội\n - Kỹ thuật\n - Công nghệ\n - Quản lý\n - Kinh tế\n - Luật\n - Khoa học sức khỏe\n - Khoa học nông nghiệp\n- Cụ thể, ĐHQG-HCM có:\n - 138 ngành đại học\n - 118 ngành thạc sĩ\n - 86 ngành tiến sĩ\n\n## Xếp hạng và Danh tiếng\n\n- ĐHQG-HCM đặt mục tiêu trở thành **hệ thống đại học nghiên cứu** hàng đầu tại châu Á.\n- Trong nhiều năm liên tiếp, ĐHQG-HCM đã được tổ chức giáo dục Quacquarelli Symonds (QS) xếp hạng trong top 150 đại học hàng đầu châu Á.\n- Từ năm 2019, ĐHQG-HCM duy trì thứ hạng từ 701-750 trong số hơn 1.000 trường đại học hàng đầu thuộc 82 quốc gia, theo đánh giá của QS.\n\n## Cam kết với Cộng đồng và Phát triển Xã hội\n\n- ĐHQG-HCM xác định \"gắn kết và phục vụ cộng đồng\" là một trong những **giá trị cốt lõi** của mình.\n- Từ năm 2016 đến nay, ĐHQG-HCM đã thực hiện hơn 3.000 hợp đồng chuyển giao công nghệ, với tổng doanh thu trung bình hàng năm khoảng 250 tỷ đồng.\n- ĐHQG-HCM đã thiết lập mạng lưới đối tác học thuật quốc tế với các tổ chức giáo dục hàng đầu từ châu Á, châu Âu, châu Mỹ và châu Úc, nhằm cập nhật các xu hướng giáo dục tiên tiến trong hoạt động đào tạo và nghiên cứu khoa học.\n\n## Sứ mệnh\n\n- ĐHQG-HCM cam kết thúc đẩy **tiến bộ xã hội** và theo đuổi lý tưởng mà các đại học hàng đầu thế giới đang hướng tới.",
+              "tầm nhìn tầm nhìn của hệ thống đại học nghiên cứu này là trở thành một trong những trường đại học hàng đầu châu á nơi tập hợp nhân tài và lan tỏa tri thức cùng văn hóa việt nam. sứ mạng sứ mạng của hệ thống đại học này bao gồm các mục tiêu chính sau đây đào tạo và bồi dưỡng nhân tài có kiến thức toàn diện trách nhiệm xã hội năng lực lãnh đạo và tư duy khởi nghiệp. nghiên cứu phát triển và ứng dụng khoa học công nghệ đổi mới sáng tạo để giải quyết các nhiệm vụ của quốc gia khu vực và thế giới. thực hiện thí điểm các chính sách mới trong giáo dục đại học. đóng góp vào sự phát triển kinh tế bền vững thúc đẩy tiến bộ xã hội và làm phong phú thêm kho tàng tri thức nhân loại cũng như nền văn hóa việt nam. giá trị cốt lõi giá trị cốt lõi của hệ thống đại học này bao gồm xuất sắc tiên phong và chính trực trong đào tạo và nghiên cứu. trách nhiệm minh bạch và hiệu quả trong hoạt động. gắn kết và phục vụ cộng đồng.",
+              "giới thiệu về đhqghcm đhqghcm là một trung tâm đào tạo đại học sau đại học và nghiên cứu khoa học công nghệ đa ngành đa lĩnh vực chất lượng cao đạt trình độ tiên tiến. đhqghcm nằm ở khu vực phía đông tp.hcm đô thị phát triển bậc nhất việt nam. chính phủ việt nam thành lập đhqghcm vào năm 1995 nhằm kiến tạo một trung tâm đào tạo đại học sau đại học và nghiên cứu khoa học công nghệ đa ngành đa lĩnh vực chất lượng cao đạt trình độ tiên tiến làm nòng cốt cho hệ thống giáo dục đại học đáp ứng nhu cầu phát triển kinh tế xã hội. quy mô và cấu trúc tổng diện tích 6437 hecta theo mô hình đô thị đại học hiện đại. cơ sở giáo dục lớn nhất đhqghcm là một trong những cơ sở giáo dục lớn nhất việt nam với 36 đơn vị. 8 trường đại học thành viên trường đại học bách khoa trường đại học khoa học tự nhiên trường đại học khoa học xã hội và nhân văn trường đại học quốc tế trường đại học công nghệ thông tin trường đại học kinh tế luật trường đại học an giang trường đại học khoa học sức khoẻ 1 viện nghiên cứu khoa học thành viên viện môi trường và tài nguyên 1 phân hiệu tại tỉnh bến tre 25 đơn vị trực thuộc các tổ chức khoa học và công nghệ thư viện các tổ chức phục vụ đào tạo dịch vụ. đào tạo và nghiên cứu đhqghcm đào tạo 93.939 sinh viên đại học 7.122 học viên cao học 995 nghiên cứu sinh đội ngũ học giả bao gồm 34 giáo sư 312 phó giáo sư 1.197 tiến sĩ chương trình đào tạo của đhqghcm gồm các lĩnh vực khoa học tự nhiên khoa học xã hội kỹ thuật công nghệ quản lý kinh tế luật khoa học sức khỏe khoa học nông nghiệp trình độ đào tạo đại học 138 ngành thạc sĩ 118 ngành tiến sĩ 86 ngành thành tích và tầm nhìn xác định tầm nhìn trở thành hệ thống đại học nghiên cứu trong tốp đầu châu á đhqghcm nhiều năm liên tiếp được tổ chức giáo dục quacquarelli symonds asia xếp hạng thuộc top 150 đh hàng đầu châu lục này. từ năm 2019 đhqghcm duy trì thứ hạng thuộc top 701750 do tổ chức giáo dục quacquarelli symonds qs anh quốc đánh giá trên 1.000 trường đại học hàng đầu thuộc 82 quốc gia. giá trị cốt lõi và cam kết đhqghcm gắn kết và phục vụ cộng đồng là một trong những giá trị cốt lõi mà đhqghcm xây dựng. từ năm 2016 đến nay toàn đhqghcm thực hiện trên 3.000 hợp đồng chuyển giao công nghệ với tổng doanh thu trung bình hằng năm đạt khoảng 250 tỷ đồng. cùng với mạng lưới đối tác học thuật quốc tế là các tổ chức giáo dục hàng đầu từ châu á châu âu châu mỹ và châu úc đhqghcm đã chủ động cập nhật các xu hướng giáo dục tiến bộ nhất trong hoạt động đào tạo nghiên cứu khoa học nhằm nâng cao vị thế và uy tín trong cộng đồng học thuật quốc tế. thúc đẩy tiến bộ xã hội là lý tưởng mà các đại học hàng đầu thế giới theo đuổi. đây cũng chính là sứ mạng mà đhqghcm cam kết thực hiện."
+            ]
+          ],
+          "uris": null,
+          "data": null,
+          "included": [
+            "metadatas",
+            "documents",
+            "distances"
+          ]
+        }
+      },
+      "error": "",
+      "perf": {
+        "start_time": "2024-11-16T07:19:13.859586+00:00",
+        "end_time": "2024-11-16T07:19:22.551639+00:00"
+      }
+    },
+    {
+      "call_id": "a02f9822-512f-4cfa-a1cc-e4890ecf7f49",
+      "call_name": "RankingDocsCommand",
+      "args": {
+        "question": "thong tin ve dhqg",
+        "histories": "",
+        "docs": [
+          "## Giới thiệu về Đại học Quốc gia Thành phố Hồ Chí Minh (ĐHQG-HCM)\n\nĐại học Quốc gia Thành phố Hồ Chí Minh, viết tắt là ĐHQG-HCM, là một **trung tâm đào tạo đại học** và **nghiên cứu khoa học công nghệ** đa ngành, đa lĩnh vực, chất lượng cao, đạt trình độ tiên tiến. ĐHQG-HCM nằm ở khu vực phía đông của Thành phố Hồ Chí Minh, một trong những đô thị phát triển nhất Việt Nam.\n\n## Lịch sử và Mục tiêu\n\n- ĐHQG-HCM được Chính phủ Việt Nam thành lập vào năm 1995.\n- Mục tiêu của ĐHQG-HCM là xây dựng một trung tâm đào tạo đại học và nghiên cứu khoa học công nghệ đa ngành, chất lượng cao, nhằm hỗ trợ hệ thống giáo dục đại học và đáp ứng nhu cầu phát triển kinh tế - xã hội.\n\n## Quy mô và Cơ cấu Tổ chức\n\n- Tổng diện tích của ĐHQG-HCM là 6.437 hecta, theo mô hình **đô thị đại học hiện đại**.\n- ĐHQG-HCM là một trong những cơ sở giáo dục lớn nhất Việt Nam, bao gồm 36 đơn vị:\n - 8 trường đại học thành viên:\n - Trường Đại học Bách Khoa\n - Trường Đại học Khoa học Tự nhiên\n - Trường Đại học Khoa học Xã hội và Nhân văn\n - Trường Đại học Quốc tế\n - Trường Đại học Công nghệ Thông tin\n - Trường Đại học Kinh tế - Luật\n - Trường Đại học An Giang\n - Trường Đại học Khoa học Sức khỏe\n - 1 viện nghiên cứu khoa học thành viên: Viện Môi trường và Tài nguyên\n - 1 phân hiệu tại tỉnh Bến Tre\n - 25 đơn vị trực thuộc, bao gồm các tổ chức khoa học và công nghệ, thư viện, và các tổ chức phục vụ đào tạo, dịch vụ.\n\n## Đào tạo và Nghiên cứu\n\n- ĐHQG-HCM hiện đang đào tạo:\n - 93.939 sinh viên đại học\n - 7.122 học viên cao học\n - 995 nghiên cứu sinh\n- Đội ngũ học giả của ĐHQG-HCM bao gồm:\n - 34 giáo sư\n - 312 phó giáo sư\n - 1.197 tiến sĩ\n- Chương trình đào tạo của ĐHQG-HCM bao gồm nhiều lĩnh vực:\n - Khoa học tự nhiên\n - Khoa học xã hội\n - Kỹ thuật\n - Công nghệ\n - Quản lý\n - Kinh tế\n - Luật\n - Khoa học sức khỏe\n - Khoa học nông nghiệp\n- Cụ thể, ĐHQG-HCM có:\n - 138 ngành đại học\n - 118 ngành thạc sĩ\n - 86 ngành tiến sĩ\n\n## Xếp hạng và Danh tiếng\n\n- ĐHQG-HCM đặt mục tiêu trở thành **hệ thống đại học nghiên cứu** hàng đầu tại châu Á.\n- Trong nhiều năm liên tiếp, ĐHQG-HCM đã được tổ chức giáo dục Quacquarelli Symonds (QS) xếp hạng trong top 150 đại học hàng đầu châu Á.\n- Từ năm 2019, ĐHQG-HCM duy trì thứ hạng từ 701-750 trong số hơn 1.000 trường đại học hàng đầu thuộc 82 quốc gia, theo đánh giá của QS.\n\n## Cam kết với Cộng đồng và Phát triển Xã hội\n\n- ĐHQG-HCM xác định \"gắn kết và phục vụ cộng đồng\" là một trong những **giá trị cốt lõi** của mình.\n- Từ năm 2016 đến nay, ĐHQG-HCM đã thực hiện hơn 3.000 hợp đồng chuyển giao công nghệ, với tổng doanh thu trung bình hàng năm khoảng 250 tỷ đồng.\n- ĐHQG-HCM đã thiết lập mạng lưới đối tác học thuật quốc tế với các tổ chức giáo dục hàng đầu từ châu Á, châu Âu, châu Mỹ và châu Úc, nhằm cập nhật các xu hướng giáo dục tiên tiến trong hoạt động đào tạo và nghiên cứu khoa học.\n\n## Sứ mệnh\n\n- ĐHQG-HCM cam kết thúc đẩy **tiến bộ xã hội** và theo đuổi lý tưởng mà các đại học hàng đầu thế giới đang hướng tới."
+        ]
+      },
+      "rets": [
+        {
+          "rank": 1,
+          "completion": {
+            "id": "chatcmpl-AU7NOVux8TFAstZscnhhedS4JCQN2",
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "1.00000",
+                  "refusal": null,
+                  "role": "assistant"
+                }
+              }
+            ],
+            "created": 1731741558,
+            "model": "gpt-4o-mini-2024-07-18",
+            "object": "chat.completion",
+            "system_fingerprint": "fp_0ba0d124f1",
+            "usage": {
+              "completion_tokens": 4,
+              "prompt_tokens": 1074,
+              "total_tokens": 1078,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "accepted_prediction_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cached_tokens": 0
+              }
+            }
+          },
+          "prompt": "\nThe following context information is provided:\n---------------------\nChat histories:\n\nDocument:\n## Giới thiệu về Đại học Quốc gia Thành phố Hồ Chí Minh (ĐHQG-HCM)\n\nĐại học Quốc gia Thành phố Hồ Chí Minh, viết tắt là ĐHQG-HCM, là một **trung tâm đào tạo đại học** và **nghiên cứu khoa học công nghệ** đa ngành, đa lĩnh vực, chất lượng cao, đạt trình độ tiên tiến. ĐHQG-HCM nằm ở khu vực phía đông của Thành phố Hồ Chí Minh, một trong những đô thị phát triển nhất Việt Nam.\n\n## Lịch sử và Mục tiêu\n\n- ĐHQG-HCM được Chính phủ Việt Nam thành lập vào năm 1995.\n- Mục tiêu của ĐHQG-HCM là xây dựng một trung tâm đào tạo đại học và nghiên cứu khoa học công nghệ đa ngành, chất lượng cao, nhằm hỗ trợ hệ thống giáo dục đại học và đáp ứng nhu cầu phát triển kinh tế - xã hội.\n\n## Quy mô và Cơ cấu Tổ chức\n\n- Tổng diện tích của ĐHQG-HCM là 6.437 hecta, theo mô hình **đô thị đại học hiện đại**.\n- ĐHQG-HCM là một trong những cơ sở giáo dục lớn nhất Việt Nam, bao gồm 36 đơn vị:\n - 8 trường đại học thành viên:\n - Trường Đại học Bách Khoa\n - Trường Đại học Khoa học Tự nhiên\n - Trường Đại học Khoa học Xã hội và Nhân văn\n - Trường Đại học Quốc tế\n - Trường Đại học Công nghệ Thông tin\n - Trường Đại học Kinh tế - Luật\n - Trường Đại học An Giang\n - Trường Đại học Khoa học Sức khỏe\n - 1 viện nghiên cứu khoa học thành viên: Viện Môi trường và Tài nguyên\n - 1 phân hiệu tại tỉnh Bến Tre\n - 25 đơn vị trực thuộc, bao gồm các tổ chức khoa học và công nghệ, thư viện, và các tổ chức phục vụ đào tạo, dịch vụ.\n\n## Đào tạo và Nghiên cứu\n\n- ĐHQG-HCM hiện đang đào tạo:\n - 93.939 sinh viên đại học\n - 7.122 học viên cao học\n - 995 nghiên cứu sinh\n- Đội ngũ học giả của ĐHQG-HCM bao gồm:\n - 34 giáo sư\n - 312 phó giáo sư\n - 1.197 tiến sĩ\n- Chương trình đào tạo của ĐHQG-HCM bao gồm nhiều lĩnh vực:\n - Khoa học tự nhiên\n - Khoa học xã hội\n - Kỹ thuật\n - Công nghệ\n - Quản lý\n - Kinh tế\n - Luật\n - Khoa học sức khỏe\n - Khoa học nông nghiệp\n- Cụ thể, ĐHQG-HCM có:\n - 138 ngành đại học\n - 118 ngành thạc sĩ\n - 86 ngành tiến sĩ\n\n## Xếp hạng và Danh tiếng\n\n- ĐHQG-HCM đặt mục tiêu trở thành **hệ thống đại học nghiên cứu** hàng đầu tại châu Á.\n- Trong nhiều năm liên tiếp, ĐHQG-HCM đã được tổ chức giáo dục Quacquarelli Symonds (QS) xếp hạng trong top 150 đại học hàng đầu châu Á.\n- Từ năm 2019, ĐHQG-HCM duy trì thứ hạng từ 701-750 trong số hơn 1.000 trường đại học hàng đầu thuộc 82 quốc gia, theo đánh giá của QS.\n\n## Cam kết với Cộng đồng và Phát triển Xã hội\n\n- ĐHQG-HCM xác định \"gắn kết và phục vụ cộng đồng\" là một trong những **giá trị cốt lõi** của mình.\n- Từ năm 2016 đến nay, ĐHQG-HCM đã thực hiện hơn 3.000 hợp đồng chuyển giao công nghệ, với tổng doanh thu trung bình hàng năm khoảng 250 tỷ đồng.\n- ĐHQG-HCM đã thiết lập mạng lưới đối tác học thuật quốc tế với các tổ chức giáo dục hàng đầu từ châu Á, châu Âu, châu Mỹ và châu Úc, nhằm cập nhật các xu hướng giáo dục tiên tiến trong hoạt động đào tạo và nghiên cứu khoa học.\n\n## Sứ mệnh\n\n- ĐHQG-HCM cam kết thúc đẩy **tiến bộ xã hội** và theo đuổi lý tưởng mà các đại học hàng đầu thế giới đang hướng tới.\n---------------------\nUsing only the information from the context, please rank the document related to user's question.\nThe ranking number must be float 5-digits and must between 0 and 1. \nIf the context does not provide sufficient information to answer, state that clearly without generating any additional details.\n",
+          "document": "## Giới thiệu về Đại học Quốc gia Thành phố Hồ Chí Minh (ĐHQG-HCM)\n\nĐại học Quốc gia Thành phố Hồ Chí Minh, viết tắt là ĐHQG-HCM, là một **trung tâm đào tạo đại học** và **nghiên cứu khoa học công nghệ** đa ngành, đa lĩnh vực, chất lượng cao, đạt trình độ tiên tiến. ĐHQG-HCM nằm ở khu vực phía đông của Thành phố Hồ Chí Minh, một trong những đô thị phát triển nhất Việt Nam.\n\n## Lịch sử và Mục tiêu\n\n- ĐHQG-HCM được Chính phủ Việt Nam thành lập vào năm 1995.\n- Mục tiêu của ĐHQG-HCM là xây dựng một trung tâm đào tạo đại học và nghiên cứu khoa học công nghệ đa ngành, chất lượng cao, nhằm hỗ trợ hệ thống giáo dục đại học và đáp ứng nhu cầu phát triển kinh tế - xã hội.\n\n## Quy mô và Cơ cấu Tổ chức\n\n- Tổng diện tích của ĐHQG-HCM là 6.437 hecta, theo mô hình **đô thị đại học hiện đại**.\n- ĐHQG-HCM là một trong những cơ sở giáo dục lớn nhất Việt Nam, bao gồm 36 đơn vị:\n - 8 trường đại học thành viên:\n - Trường Đại học Bách Khoa\n - Trường Đại học Khoa học Tự nhiên\n - Trường Đại học Khoa học Xã hội và Nhân văn\n - Trường Đại học Quốc tế\n - Trường Đại học Công nghệ Thông tin\n - Trường Đại học Kinh tế - Luật\n - Trường Đại học An Giang\n - Trường Đại học Khoa học Sức khỏe\n - 1 viện nghiên cứu khoa học thành viên: Viện Môi trường và Tài nguyên\n - 1 phân hiệu tại tỉnh Bến Tre\n - 25 đơn vị trực thuộc, bao gồm các tổ chức khoa học và công nghệ, thư viện, và các tổ chức phục vụ đào tạo, dịch vụ.\n\n## Đào tạo và Nghiên cứu\n\n- ĐHQG-HCM hiện đang đào tạo:\n - 93.939 sinh viên đại học\n - 7.122 học viên cao học\n - 995 nghiên cứu sinh\n- Đội ngũ học giả của ĐHQG-HCM bao gồm:\n - 34 giáo sư\n - 312 phó giáo sư\n - 1.197 tiến sĩ\n- Chương trình đào tạo của ĐHQG-HCM bao gồm nhiều lĩnh vực:\n - Khoa học tự nhiên\n - Khoa học xã hội\n - Kỹ thuật\n - Công nghệ\n - Quản lý\n - Kinh tế\n - Luật\n - Khoa học sức khỏe\n - Khoa học nông nghiệp\n- Cụ thể, ĐHQG-HCM có:\n - 138 ngành đại học\n - 118 ngành thạc sĩ\n - 86 ngành tiến sĩ\n\n## Xếp hạng và Danh tiếng\n\n- ĐHQG-HCM đặt mục tiêu trở thành **hệ thống đại học nghiên cứu** hàng đầu tại châu Á.\n- Trong nhiều năm liên tiếp, ĐHQG-HCM đã được tổ chức giáo dục Quacquarelli Symonds (QS) xếp hạng trong top 150 đại học hàng đầu châu Á.\n- Từ năm 2019, ĐHQG-HCM duy trì thứ hạng từ 701-750 trong số hơn 1.000 trường đại học hàng đầu thuộc 82 quốc gia, theo đánh giá của QS.\n\n## Cam kết với Cộng đồng và Phát triển Xã hội\n\n- ĐHQG-HCM xác định \"gắn kết và phục vụ cộng đồng\" là một trong những **giá trị cốt lõi** của mình.\n- Từ năm 2016 đến nay, ĐHQG-HCM đã thực hiện hơn 3.000 hợp đồng chuyển giao công nghệ, với tổng doanh thu trung bình hàng năm khoảng 250 tỷ đồng.\n- ĐHQG-HCM đã thiết lập mạng lưới đối tác học thuật quốc tế với các tổ chức giáo dục hàng đầu từ châu Á, châu Âu, châu Mỹ và châu Úc, nhằm cập nhật các xu hướng giáo dục tiên tiến trong hoạt động đào tạo và nghiên cứu khoa học.\n\n## Sứ mệnh\n\n- ĐHQG-HCM cam kết thúc đẩy **tiến bộ xã hội** và theo đuổi lý tưởng mà các đại học hàng đầu thế giới đang hướng tới."
+        }
+      ],
+      "error": "",
+      "perf": {
+        "start_time": "2024-11-16T07:19:13.859586+00:00",
+        "end_time": "2024-11-16T07:19:22.551639+00:00"
+      }
+    },
+    {
+      "call_id": "1a3a36e8-d80a-492e-874c-c14cd1cc87b6",
+      "call_name": "AnswerUsingStreamCommand",
+      "args": {
+        "question": "thong tin ve dhqg",
+        "docs": [
+          "## Giới thiệu về Đại học Quốc gia Thành phố Hồ Chí Minh (ĐHQG-HCM)\n\nĐại học Quốc gia Thành phố Hồ Chí Minh, viết tắt là ĐHQG-HCM, là một **trung tâm đào tạo đại học** và **nghiên cứu khoa học công nghệ** đa ngành, đa lĩnh vực, chất lượng cao, đạt trình độ tiên tiến. ĐHQG-HCM nằm ở khu vực phía đông của Thành phố Hồ Chí Minh, một trong những đô thị phát triển nhất Việt Nam.\n\n## Lịch sử và Mục tiêu\n\n- ĐHQG-HCM được Chính phủ Việt Nam thành lập vào năm 1995.\n- Mục tiêu của ĐHQG-HCM là xây dựng một trung tâm đào tạo đại học và nghiên cứu khoa học công nghệ đa ngành, chất lượng cao, nhằm hỗ trợ hệ thống giáo dục đại học và đáp ứng nhu cầu phát triển kinh tế - xã hội.\n\n## Quy mô và Cơ cấu Tổ chức\n\n- Tổng diện tích của ĐHQG-HCM là 6.437 hecta, theo mô hình **đô thị đại học hiện đại**.\n- ĐHQG-HCM là một trong những cơ sở giáo dục lớn nhất Việt Nam, bao gồm 36 đơn vị:\n - 8 trường đại học thành viên:\n - Trường Đại học Bách Khoa\n - Trường Đại học Khoa học Tự nhiên\n - Trường Đại học Khoa học Xã hội và Nhân văn\n - Trường Đại học Quốc tế\n - Trường Đại học Công nghệ Thông tin\n - Trường Đại học Kinh tế - Luật\n - Trường Đại học An Giang\n - Trường Đại học Khoa học Sức khỏe\n - 1 viện nghiên cứu khoa học thành viên: Viện Môi trường và Tài nguyên\n - 1 phân hiệu tại tỉnh Bến Tre\n - 25 đơn vị trực thuộc, bao gồm các tổ chức khoa học và công nghệ, thư viện, và các tổ chức phục vụ đào tạo, dịch vụ.\n\n## Đào tạo và Nghiên cứu\n\n- ĐHQG-HCM hiện đang đào tạo:\n - 93.939 sinh viên đại học\n - 7.122 học viên cao học\n - 995 nghiên cứu sinh\n- Đội ngũ học giả của ĐHQG-HCM bao gồm:\n - 34 giáo sư\n - 312 phó giáo sư\n - 1.197 tiến sĩ\n- Chương trình đào tạo của ĐHQG-HCM bao gồm nhiều lĩnh vực:\n - Khoa học tự nhiên\n - Khoa học xã hội\n - Kỹ thuật\n - Công nghệ\n - Quản lý\n - Kinh tế\n - Luật\n - Khoa học sức khỏe\n - Khoa học nông nghiệp\n- Cụ thể, ĐHQG-HCM có:\n - 138 ngành đại học\n - 118 ngành thạc sĩ\n - 86 ngành tiến sĩ\n\n## Xếp hạng và Danh tiếng\n\n- ĐHQG-HCM đặt mục tiêu trở thành **hệ thống đại học nghiên cứu** hàng đầu tại châu Á.\n- Trong nhiều năm liên tiếp, ĐHQG-HCM đã được tổ chức giáo dục Quacquarelli Symonds (QS) xếp hạng trong top 150 đại học hàng đầu châu Á.\n- Từ năm 2019, ĐHQG-HCM duy trì thứ hạng từ 701-750 trong số hơn 1.000 trường đại học hàng đầu thuộc 82 quốc gia, theo đánh giá của QS.\n\n## Cam kết với Cộng đồng và Phát triển Xã hội\n\n- ĐHQG-HCM xác định \"gắn kết và phục vụ cộng đồng\" là một trong những **giá trị cốt lõi** của mình.\n- Từ năm 2016 đến nay, ĐHQG-HCM đã thực hiện hơn 3.000 hợp đồng chuyển giao công nghệ, với tổng doanh thu trung bình hàng năm khoảng 250 tỷ đồng.\n- ĐHQG-HCM đã thiết lập mạng lưới đối tác học thuật quốc tế với các tổ chức giáo dục hàng đầu từ châu Á, châu Âu, châu Mỹ và châu Úc, nhằm cập nhật các xu hướng giáo dục tiên tiến trong hoạt động đào tạo và nghiên cứu khoa học.\n\n## Sứ mệnh\n\n- ĐHQG-HCM cam kết thúc đẩy **tiến bộ xã hội** và theo đuổi lý tưởng mà các đại học hàng đầu thế giới đang hướng tới."
+        ]
+      },
+      "rets": {
+        "answer": "Dữ liệu về thông tin về Đại học Quốc gia Thành phố Hồ Chí Minh (ĐHQG-HCM) đã được cung cấp chi tiết trong ngữ cảnh. Bạn có thể tham khảo các thông tin như lịch sử, mục tiêu, quy mô, cơ cấu tổ chức, đào tạo và nghiên cứu, xếp hạng và danh tiếng, cam kết với cộng đồng và phát triển xã hội, cùng với sứ mệnh của ĐHQG-HCM. Nếu bạn cần thông tin cụ thể hơn, vui lòng cho tôi biết!",
+        "completion": {
+          "id": "chatcmpl-AU7NPJoZHrWzteXbWsN831FLyNnlL",
+          "choices": [],
+          "created": 1731741559,
+          "model": "gpt-4o-mini-2024-07-18",
+          "object": "chat.completion.chunk",
+          "system_fingerprint": "fp_9b78b61c52",
+          "usage": {
+            "completion_tokens": 111,
+            "prompt_tokens": 1084,
+            "total_tokens": 1195,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cached_tokens": 0
+            }
+          }
+        },
+        "prompt": "\nThe following context information is provided:\n---------------------\nContext:\n## Giới thiệu về Đại học Quốc gia Thành phố Hồ Chí Minh (ĐHQG-HCM)\n\nĐại học Quốc gia Thành phố Hồ Chí Minh, viết tắt là ĐHQG-HCM, là một **trung tâm đào tạo đại học** và **nghiên cứu khoa học công nghệ** đa ngành, đa lĩnh vực, chất lượng cao, đạt trình độ tiên tiến. ĐHQG-HCM nằm ở khu vực phía đông của Thành phố Hồ Chí Minh, một trong những đô thị phát triển nhất Việt Nam.\n\n## Lịch sử và Mục tiêu\n\n- ĐHQG-HCM được Chính phủ Việt Nam thành lập vào năm 1995.\n- Mục tiêu của ĐHQG-HCM là xây dựng một trung tâm đào tạo đại học và nghiên cứu khoa học công nghệ đa ngành, chất lượng cao, nhằm hỗ trợ hệ thống giáo dục đại học và đáp ứng nhu cầu phát triển kinh tế - xã hội.\n\n## Quy mô và Cơ cấu Tổ chức\n\n- Tổng diện tích của ĐHQG-HCM là 6.437 hecta, theo mô hình **đô thị đại học hiện đại**.\n- ĐHQG-HCM là một trong những cơ sở giáo dục lớn nhất Việt Nam, bao gồm 36 đơn vị:\n - 8 trường đại học thành viên:\n - Trường Đại học Bách Khoa\n - Trường Đại học Khoa học Tự nhiên\n - Trường Đại học Khoa học Xã hội và Nhân văn\n - Trường Đại học Quốc tế\n - Trường Đại học Công nghệ Thông tin\n - Trường Đại học Kinh tế - Luật\n - Trường Đại học An Giang\n - Trường Đại học Khoa học Sức khỏe\n - 1 viện nghiên cứu khoa học thành viên: Viện Môi trường và Tài nguyên\n - 1 phân hiệu tại tỉnh Bến Tre\n - 25 đơn vị trực thuộc, bao gồm các tổ chức khoa học và công nghệ, thư viện, và các tổ chức phục vụ đào tạo, dịch vụ.\n\n## Đào tạo và Nghiên cứu\n\n- ĐHQG-HCM hiện đang đào tạo:\n - 93.939 sinh viên đại học\n - 7.122 học viên cao học\n - 995 nghiên cứu sinh\n- Đội ngũ học giả của ĐHQG-HCM bao gồm:\n - 34 giáo sư\n - 312 phó giáo sư\n - 1.197 tiến sĩ\n- Chương trình đào tạo của ĐHQG-HCM bao gồm nhiều lĩnh vực:\n - Khoa học tự nhiên\n - Khoa học xã hội\n - Kỹ thuật\n - Công nghệ\n - Quản lý\n - Kinh tế\n - Luật\n - Khoa học sức khỏe\n - Khoa học nông nghiệp\n- Cụ thể, ĐHQG-HCM có:\n - 138 ngành đại học\n - 118 ngành thạc sĩ\n - 86 ngành tiến sĩ\n\n## Xếp hạng và Danh tiếng\n\n- ĐHQG-HCM đặt mục tiêu trở thành **hệ thống đại học nghiên cứu** hàng đầu tại châu Á.\n- Trong nhiều năm liên tiếp, ĐHQG-HCM đã được tổ chức giáo dục Quacquarelli Symonds (QS) xếp hạng trong top 150 đại học hàng đầu châu Á.\n- Từ năm 2019, ĐHQG-HCM duy trì thứ hạng từ 701-750 trong số hơn 1.000 trường đại học hàng đầu thuộc 82 quốc gia, theo đánh giá của QS.\n\n## Cam kết với Cộng đồng và Phát triển Xã hội\n\n- ĐHQG-HCM xác định \"gắn kết và phục vụ cộng đồng\" là một trong những **giá trị cốt lõi** của mình.\n- Từ năm 2016 đến nay, ĐHQG-HCM đã thực hiện hơn 3.000 hợp đồng chuyển giao công nghệ, với tổng doanh thu trung bình hàng năm khoảng 250 tỷ đồng.\n- ĐHQG-HCM đã thiết lập mạng lưới đối tác học thuật quốc tế với các tổ chức giáo dục hàng đầu từ châu Á, châu Âu, châu Mỹ và châu Úc, nhằm cập nhật các xu hướng giáo dục tiên tiến trong hoạt động đào tạo và nghiên cứu khoa học.\n\n## Sứ mệnh\n\n- ĐHQG-HCM cam kết thúc đẩy **tiến bộ xã hội** và theo đuổi lý tưởng mà các đại học hàng đầu thế giới đang hướng tới.\n---------------------\nPlease answer the user's question using only the information available in the provided context. If the context lacks sufficient information to answer the question, indicate this by stating, \"Dữ liệu về <INTENT of USER> chưa được cung cấp, tuy nhiên yêu cầu của bạn đã được ghi nhận.\" without adding any assumptions or additional details.\nNO YAPPING\n"
+      },
+      "error": "",
+      "perf": {
+        "start_time": "2024-11-16T07:19:13.859586+00:00",
+        "end_time": "2024-11-16T07:19:22.551639+00:00"
+      }
+    }
+  ]

@@ -1,0 +1,23 @@
+# Virtual environment
+venv/
+
+# Bytecode files
+*.pyc
+*.pyo
+__pycache__/
+
+# IDE/editor specific files
+.idea/
+.vscode/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Python distribution
+build/
+dist/
+*.egg-info/
+
+# dotenv files (if you're using environment variables from a .env file)
+#.env

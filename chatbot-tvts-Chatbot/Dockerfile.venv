@@ -1,0 +1,17 @@
+FROM python:3.10.13
+
+WORKDIR /app
+
+COPY ./requirements.txt .
+
+RUN pip install -r requirements.txt
+
+ENV PYTHONUNBUFFERED 1
+
+COPY . .
+
+EXPOSE 6811
+EXPOSE 8000
+
+
+CMD ["flask","--app", "./ChatbotAgent/v1/chatbot_agent_app" ,"--debug","run","--host=0.0.0.0", "--port=6811" ]

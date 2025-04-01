@@ -1,0 +1,27 @@
+FROM python:3.9-slim
+
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY KMSProcessor/v1/requirements.txt /app/KMSProcessor/v1/
+RUN pip install --no-cache-dir -r KMSProcessor/v1/requirements.txt
+
+COPY KMSProcessor /app/KMSProcessor
+COPY common /app/common
+
+ENV PYTHONPATH=/app \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+RUN useradd -m myuser \
+    && chown -R myuser:myuser /app
+USER myuser
+
+EXPOSE 6802
+
+CMD ["python", "KMSProcessor/v1/kms_gptprocessor_api.py"]
