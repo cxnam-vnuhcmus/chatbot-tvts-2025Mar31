@@ -64,7 +64,7 @@ CMD ["panel", "serve", \
     "--basic-login-template", "templates/basic_login.html", \
     "--logout-template", "templates/logout.html", \
     "--index", "index.py", \
-    "--static-dirs", "assets=assets","thumbnails=thumbnails", \
+    "--static-dirs", "assets=assets","thumbnails=thumbnails", "chatbot=ChatbotUI", \
     "--allow-websocket-origin", "*", \
     "--check-unused-sessions", "3600000"]
 
