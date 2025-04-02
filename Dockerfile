@@ -43,6 +43,7 @@ COPY chatbot-tvts-Monitoring/MonitoringDashboardPython/main.py /app/MonitoringDa
 
 COPY index.py /app/index.py
 
+COPY ChatbotUI /app/ChatbotUI
 
 RUN useradd -m myuser \
     && chown -R myuser:myuser /app
