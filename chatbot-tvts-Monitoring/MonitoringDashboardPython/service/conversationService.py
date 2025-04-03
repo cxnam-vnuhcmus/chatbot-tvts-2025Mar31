@@ -5,7 +5,6 @@ from model.conversationDto import ConversationDto
 
 load_dotenv()
 url = os.getenv('MONIROTING_EVALUATOR_SERVICE')
-print(url)
 
 def get_all_conversations(page_index: int = 0, page_size: int = 100) -> list[ConversationDto]:
     response = requests.get(f"{url}/conversations?pageIndex={page_index}&pageSize={page_size}")
@@ -15,9 +14,7 @@ def get_all_conversations(page_index: int = 0, page_size: int = 100) -> list[Con
         raise Exception(f"Error: {response.status_code}, {response.text}")
 
 def get_total_count_conversation() -> int:
-    print(f"{url}/conversations/count")
     response = requests.get(f"{url}/conversations/count")
-    print(response)
     if response.status_code == 200:
         return response.json()["total"]
     else:

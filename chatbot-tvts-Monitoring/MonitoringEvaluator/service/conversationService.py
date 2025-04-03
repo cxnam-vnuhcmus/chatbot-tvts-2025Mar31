@@ -38,7 +38,6 @@ class ConversationService():
     def  get_total_count_conversation(self) -> int:    
         print("get_total_count")
         total = self.record_repository.get_total_count_conversation()
-        print(total)
         return total[0][0]
 
     def get_conversation_by_id(self, conversation_id) -> ConversationDto:
