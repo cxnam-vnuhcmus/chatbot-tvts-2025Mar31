@@ -807,12 +807,23 @@ class KMSAdmin(param.Parameterized):
 
         self.tabs.param.watch(self.on_tab_change, 'active')
 
-    def create_layout(self):        
+    def create_menu(self):
         menu_items = [
             ("Quản lý tri thức", "/kms_admin"),
             ("Đánh giá hệ thống", "/main")
         ]
         
+        current_page = pn.state.location.pathname
+
+        menu_buttons = []
+        for name, link in menu_items:
+            button_type = "primary" if current_page == link else "default"
+            button = pn.widgets.Button(name=name, button_type=button_type, width=140, height=40)
+            button.js_on_click(args={"url": link}, code="window.location.href = url;")
+            menu_buttons.append(button)
+        return pn.Row(*menu_buttons, css_classes=["menu-bar"])
+    
+    def create_layout(self):        
         custom_css = """
         <style>
             .menu-bar button {
@@ -840,18 +851,7 @@ class KMSAdmin(param.Parameterized):
         </style>
         """
         
-        def create_menu():
-            current_page = pn.state.location.pathname
-
-            menu_buttons = []
-            for name, link in menu_items:
-                button_type = "primary" if current_page == link else "default"
-                button = pn.widgets.Button(name=name, button_type=button_type, width=140, height=40)
-                button.js_on_click(args={"url": link}, code="window.location.href = url;")
-                menu_buttons.append(button)
-            return pn.Row(*menu_buttons, css_classes=["menu-bar"])
-        
-        menu = create_menu()
+        menu = self.create_menu()
         
         left_column = pn.Column(
             pn.Row(
@@ -887,8 +887,7 @@ class KMSAdmin(param.Parameterized):
         self.layout = pn.template.FastListTemplate(
             header=[
                 pn.pane.HTML(custom_css),
-                pn.Spacer(width=20),
-                menu,
+                pn.Row(pn.Spacer(width=50), menu, align="start"),
                 header_row
             ],
             title="KMS Admin - HỆ THỐNG QUẢN LÝ TRI THỨC",

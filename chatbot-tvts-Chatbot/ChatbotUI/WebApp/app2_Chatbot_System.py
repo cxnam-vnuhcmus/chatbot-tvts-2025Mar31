@@ -477,7 +477,7 @@ def build_dashboard() -> list:
 
 
 dashboard = pn.Column()
-dashboard.objects = build_dashboard()
+# dashboard.objects = build_dashboard()
 
 # TODO: session screen
 
@@ -497,13 +497,16 @@ def build_sessions():
 {str(sess['session_details'][1]['role']).upper()}: {sess['session_details'][1]['content']} 
 </pre>""")
     df = pd.DataFrame(sessions)
+    
+    if not sessions:
+        df = pd.DataFrame(columns=['session_id', 'session_details', 'latest_created_at'])
 
     filters = {
         'session_id': {'type': 'input', 'func': 'like', 'placeholder': 'Enter Session'},
     }
     table = pn.widgets.Tabulator(
-        df[['session_id', 'session_details', 'latest_created_at']
-           ], sizing_mode='stretch_width',
+        df[['session_id', 'session_details', 'latest_created_at']], 
+        sizing_mode='stretch_width',
         layout='fit_columns',
         widths={
             'index': 80,
@@ -521,13 +524,25 @@ def build_sessions():
         disabled=True,
 
     )
+    
+    # Nhãn Selected Session ID
+    label = pn.pane.Markdown("### Selected Session ID:")
 
-    input_text = pn.widgets.TextInput(
-        name="Selected Session ID: ", disabled=True,
-    )
+    # Ô nhập Selected Session ID (chỉ đọc)
+    input_text = pn.widgets.TextInput(disabled=True)
     input_text.value = session_input.value
-    button = pn.widgets.Button(
-        name="Go to session")
+
+    # Nút Go to Session
+    button = pn.widgets.Button(name="Go to session")
+
+    
+    
+    # input_text = pn.widgets.TextInput(
+    #     name="Selected Session ID: ", disabled=True,
+    # )
+    # input_text.value = session_input.value
+    # button = pn.widgets.Button(
+    #     name="Go to session")
     button.js_on_click(code="""
         const urlParams = new URLSearchParams(window.location.search);
         const session_id = urlParams.get('session_id');
@@ -538,6 +553,15 @@ def build_sessions():
         var url = `?session_id=${session_id}`;
         window.location.href = url;
         """)
+    
+    # Tạo layout dạng lưới (2 cột, 2 hàng)
+    layout = pn.Row(
+        label, 
+        pn.Spacer(width=10),
+        input_text, 
+        pn.Spacer(width=10),
+        button
+    )
 
     def update(e):
         if not e:
@@ -547,7 +571,7 @@ def build_sessions():
         input_text.value = session_id
     # table.on_click(l)
     table.on_click(lambda e: update(e))
-    return [input_text, button, table]
+    return [layout, pn.Spacer(height=20), table]
 
 
 sessions = pn.Column()
@@ -652,7 +676,7 @@ tab = pn.Tabs(
     ("Chatbot", pn.Column(chatPanel,
      pn.Row(q1_btn, q2_btn, q3_btn, name="Follow-up questions"),
     )),
-    ("Dashboard", dashboard),
+    # ("Dashboard", dashboard),
     ("Sessions", sessions),
 )
 template.header.append(modal_btn)

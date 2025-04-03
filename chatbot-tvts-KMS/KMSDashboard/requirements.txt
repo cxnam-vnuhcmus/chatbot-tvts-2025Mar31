@@ -14,3 +14,5 @@ python-Levenshtein
 panel
 bokeh
 beautifulsoup4
+openpyxl
+plotly

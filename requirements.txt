@@ -16,4 +16,6 @@ Werkzeug
 chromadb==0.5.5
 bokeh
 beautifulsoup4
+openpyxl
+plotly
 

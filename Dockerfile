@@ -38,7 +38,7 @@ COPY thumbnails /app/thumbnails
 
 COPY chatbot-tvts-KMS/KMSUser/WebApp/kms_user.py /app/KMSUser/WebApp/kms_user.py
 COPY chatbot-tvts-KMS/KMSDashboard/WebApp/kms_admin.py /app/KMSDashboard/WebApp/kms_admin.py
-COPY chatbot-tvts-Chatbot/ChatbotUI/WebApp/app2_Chatbot_System.py /app/ChatbotUI/WebApp/app2_Chatbot_System.py
+COPY chatbot-tvts-Chatbot/ChatbotUI/WebApp/app2_Chatbot_System.py /app/ChatbotUI/WebApp/chatbotui.py
 COPY chatbot-tvts-Monitoring/MonitoringDashboardPython/main.py /app/MonitoringDashboardPython/main.py
 
 COPY index.py /app/index.py
@@ -56,7 +56,7 @@ CMD ["panel", "serve", \
     "index.py", \
     "KMSUser/WebApp/kms_user.py", \
     "KMSDashboard/WebApp/kms_admin.py", \
-    "ChatbotUI/WebApp/app2_Chatbot_System.py", \
+    "ChatbotUI/WebApp/chatbotui.py", \
     "MonitoringDashboardPython/main.py", \
     "--address", "0.0.0.0", \
     "--port", "6822", \
