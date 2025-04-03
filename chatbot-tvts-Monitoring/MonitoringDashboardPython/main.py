@@ -11,7 +11,17 @@ from bokeh.models.widgets.tables import NumberFormatter, DateFormatter
 from panel.widgets import IntSlider
 import pandas as pd
 import math
+import plotly.graph_objects as go
 pn.extension('tabulator')
+pn.extension('plotly')
+pn.extension(raw_css=[
+    """
+        .pn-wrapper .bk-panel-models-layout-Column:first-child
+        {
+            height: calc(100vh - 128px);
+        }
+    """
+])
 
 # Define a function to create a table with buttons
 def create_conversation_table():
@@ -307,6 +317,179 @@ def check_admin_access(username, permissions):
     
     return True, ""
 
+# Create chatbot evalution table
+def create_chatbot_evaluation_table(inputPath: str):
+    # Read data file from excel
+    df = pd.read_excel(inputPath)
+    
+    needed_columns = ['id', 'main_input', 'main_output', 'answer_relevance', 'groundedness']
+    df = df[needed_columns]
+
+    # Rename columns using the rename() method
+    df = df.rename(columns={
+        'id': 'Id',
+        'main_input': 'Input',
+        'main_output': 'Output',
+        'answer_relevance': "Answer Relevance",
+        'groundedness': "Groundedness",
+        # Add more as needed
+    })
+
+    widths={
+        'index': '5%', 
+        'Id': '10%', 
+        'Input': '30%', 
+        'Output': '30%',
+        'Answer Relevance': '10%',
+        'Groundedness': '10%',
+    }
+    
+    # Define column widths and formatters if needed
+    bokeh_formatters = {}  # Define formatters if necessary, e.g., for dates
+
+    # Create the Tabulator widget to display the DataFrame
+    table = pn.widgets.Tabulator(df,
+        widths=widths,
+        sizing_mode="stretch_width", 
+        disabled=True,  # Set to False if you want the table to be editable
+        formatters=bokeh_formatters,
+        page_size=20,
+        styles={'max-height': '100vh', 'overflow-y': 'auto'},
+    )
+    
+    table.hidden_columns = ['Id']
+    
+    table.on_click(show_evaluation)
+    
+    return table
+
+def create_evaluation_details_popup():
+    # Nội dung popup
+    popup_content = pn.Column()
+
+    # Popup Modal để hiển thị chi tiết hội thoại
+    popup = pn.Card(
+        popup_content,
+        collapsible=False,
+        visible=False,  
+        styles={
+            'position': 'fixed', 'left': '50%', 'top': '50%', 
+            'transform': 'translate(-50%, -50%)', 'z-index': '1000',
+            'background': 'white', 'padding': '20px',
+            'width': '80%',  
+            'height': '80%', 'overflow-y': 'auto', 'overflow-x': 'hidden',
+            'border-radius': '8px', 'box-shadow': '0px 4px 10px rgba(0, 0, 0, 0.1)'
+        }
+    )
+
+    return popup
+
+def show_evaluation(event):
+    if hasattr(event.model, 'source'):
+        data_source = event.model.source.data
+        row_index = event.row 
+        row_data = {col: data_source[col][row_index] for col in data_source}
+        show_evaluation_popup(row_data)
+
+def show_evaluation_popup(row_data: dict):
+    # Show popup
+    evaluation_details_popup.visible = True
+    evaluation_details_popup.title = f"Data id: {row_data['Id']}"
+    evaluation_details_popup[0].objects = [pn.Row()]
+    popup_content = get_evaluation_popup_content(row_data)
+    evaluation_details_popup[0].objects = popup_content
+
+    return
+
+def get_evaluation_rating_ui(row_data):
+    ratings = pn.Row(sizing_mode='stretch_width')
+    ans_rel = row_data["Answer Relevance"]
+    groundedness = row_data["Groundedness"]
+    
+    ratings=pn.Row(
+        pn.pane.Markdown(f"**Answer Relevance:** {ans_rel}", styles={'color': 'gray', 'font-size': '12px'}),
+        pn.pane.Markdown(f"**Groundedness:** {groundedness}", styles={'color': 'gray', 'font-size': '12px'}),
+        sizing_mode='stretch_width'
+    )
+    
+    return ratings
+
+def get_evaluation_popup_content(row_data: dict):
+    record_panes = []
+
+    ratings = get_evaluation_rating_ui(row_data)
+    
+    record_pane = pn.Column(
+        pn.Row(
+            pn.pane.Markdown(f" ", styles={'color': 'gray', 'font-size': '14px'}),
+            sizing_mode='stretch_width'
+        ),
+        pn.Row(
+            pn.widgets.ButtonIcon(icon="user", size="24px", width=24, height=24),
+            pn.Column(
+                pn.pane.Markdown(f"{row_data['Input']}", styles={'background-color': '#f3f4f6', 'padding': '10px', 'border-radius': '8px', 'width': '100%'}),
+                sizing_mode="stretch_width",
+            ),
+            sizing_mode='stretch_width'
+        ),
+        pn.Row(
+            pn.widgets.ButtonIcon(icon="robot-face", size="24px", width=24, height=24),
+            pn.Column(
+                pn.pane.Markdown(f"{row_data['Output']}", styles={'background-color': '#fef3c7', 'padding': '10px', 'border-radius': '8px', 'width': '100%'}),
+                ratings,
+                sizing_mode="stretch_width",
+            ),
+            sizing_mode='stretch_width'
+        ),
+        pn.layout.HSpacer(height=10)
+    )
+    record_panes.append(record_pane)
+
+    # Nút đóng popup
+    close_button = pn.widgets.Button(name="OK", button_type="primary")
+    close_button.on_click(lambda event: setattr(evaluation_details_popup, 'visible', False))
+
+    return [*record_panes, pn.Row(pn.layout.HSpacer(), close_button), pn.layout.HSpacer(height=20)]
+
+
+# Create chatbot evalution pie charts
+def create_chatbot_evaluation_pie_charts(inputPath: str):
+    # Read data file from excel
+    df = pd.read_excel(inputPath)
+
+    # Average Answer Relevance pie chart
+    avg_answer_relevance = df["answer_relevance"].mean()
+    avg_answer_relevance_percent = avg_answer_relevance * 100 / 5
+    labels_1 = ['Answer Relevance', 'Not Answer Relevance']
+    sizes_1 = [avg_answer_relevance_percent, 100-avg_answer_relevance_percent]
+
+    fig = go.Figure(data=[go.Pie(labels=labels_1, values=sizes_1)])
+    fig.update_layout(
+        title={ 'text': 'Avg. Answer Relevance', 'x': 0.5, 'xanchor': 'center' },
+        height=300
+    )
+    pie_avg_answer_relevance = pn.pane.Plotly(fig)
+
+    # Average Groundedness pie chart
+    avg_groundedness = df["groundedness"].mean()
+    avg_groundedness_percent = avg_groundedness * 100 / 5
+    labels_2 = ['Groundedness', 'Not Groundedness']
+    sizes_2 = [avg_groundedness_percent, 100-avg_groundedness_percent]
+
+    fig2 = go.Figure(data=[go.Pie(labels=labels_2, values=sizes_2)])
+    fig2.update_layout(
+        title={ 'text': 'Avg. Groundedness', 'x': 0.5, 'xanchor': 'center' },
+        height=300
+    )
+    pie_groundedness = pn.pane.Plotly(fig2)
+
+    return pn.Column(
+        pie_avg_answer_relevance,
+        pie_groundedness,
+        styles={
+            'width': '30%', 
+        }
+    )
 
 # -----Dashboard UI
 
@@ -324,6 +507,36 @@ if True:
 
     # Popup conversation details
     conversation_details_popup = create_conversation_details_popup()
+    
+    # Create the table conversation
+    conversation_evaluation = pn.Column(
+        conversation_table,
+        conversation_details_popup  # Popup hiển thị đè lên table
+    )
+
+
+    # Create table chatbot evaluation
+    import os
+    file_path = os.path.join(os.path.dirname(__file__), "test-data.xlsx")
+    chatbot_evaluation_table = create_chatbot_evaluation_table(file_path)
+
+    # Create chatbot evaluation pie chart
+    chatbot_evaluation_pie_charts = create_chatbot_evaluation_pie_charts(file_path)
+
+    evaluation_details_popup = create_evaluation_details_popup()
+    
+    # Create the table chatbot evaluation
+    chatbot_evaluation = pn.Row(
+        chatbot_evaluation_table,
+        chatbot_evaluation_pie_charts,
+        evaluation_details_popup
+    )
+
+    # Create tabs
+    tabs = pn.Tabs(
+        ("Đánh giá Conversation", conversation_evaluation),
+        ("Đánh giá ChatBot", chatbot_evaluation),
+    )
 
     # Create the Panel layout
     dashboard = pn.Column(
@@ -397,7 +610,7 @@ if True:
         ],
         title="M&E - HỆ THỐNG ĐÁNH GIÁ CHATBOT",
         favicon="assets/images/favicon.png",
-        main=[dashboard],
+        main=[tabs],
         theme_toggle=False
     )
 
