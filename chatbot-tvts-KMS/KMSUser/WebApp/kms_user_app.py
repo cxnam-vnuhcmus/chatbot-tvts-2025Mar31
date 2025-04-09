@@ -256,18 +256,6 @@ class KMSUser(param.Parameterized):
             temp_container.append(header)
 
 
-            ######
-            data_filters = {
-                'id': {'type': 'input', 'func': 'like', 'placeholder': 'Tìm theo ID'},
-                'content': {'type': 'input', 'func': 'like', 'placeholder': 'Tìm theo nội dung'},
-                'created_date': {'type': 'input', 'func': 'like', 'placeholder': 'Tìm theo ngày'},
-                'unit': {'type': 'input', 'func': 'like', 'placeholder': 'Tìm theo đơn vị'},
-                'sender': {'type': 'input', 'func': 'like', 'placeholder': 'Tìm theo người tạo'},
-                'approval_status': {'type': 'input', 'func': 'like', 'placeholder': ''},
-                'is_duplicate': {'type': 'input', 'func': 'like', 'placeholder': ''},
-                'conflict_status': {'type': 'input', 'func': 'like', 'placeholder': ''},
-            }
-
             displayed_columns = [
                 'id', 'content', 'created_date', 'unit', 'sender', 
                 'approval_status', 
@@ -297,7 +285,7 @@ class KMSUser(param.Parameterized):
             documents = self._format_initial_data(documents)
 
             filtered_data = documents[available_columns] if len(documents) > 0 else pd.DataFrame(columns=available_columns)
-
+            
             column_widths = {
                 'id': '10%',               
                 'content': '30%',
@@ -309,25 +297,37 @@ class KMSUser(param.Parameterized):
                 'conflict_status': '10%',
             }
 
-            center_aligned_columns = {'approval_status', 'is_duplicate', 'conflict_status'}  # Cột cần căn giữa
-
-            column_configs = [
+            dropdown_columns = {
+                # 'approval_status': ['Approved', 'Rejected', 'Pending'], 
+                # 'is_duplicate': ['Không trùng lắp', 'Có trùng lắp'], 
+                # 'conflict_status': ['Không mâu thuẫn', 'Có mâu thuẫn']
+            } 
+            
+            column_width_configs = [
                 {
                     'field': col,
                     'title': column_titles.get(col, col),
                     'width': column_widths.get(col),
-                    'text_align': 'center' if col in center_aligned_columns else 'left',
-                    'formatter': 'truncate' if col == 'content' else None,
+                    "editable": False,
+                    'editor': False 
                 }
                 for col in available_columns if col in column_widths
             ]
 
-            data_table = pn.widgets.Tabulator(
+            header_filters = {
+                col: {
+                    'type': 'list' if col in dropdown_columns else 'input',  # Kiểu 'select' hoặc 'input' tùy theo cột
+                    'values': list(sorted(dropdown_columns[col])) if col in dropdown_columns else []  # Giá trị dropdown nếu có, hoặc danh sách rỗng cho input
+                }
+                for col in available_columns if col in column_widths
+            } 
+          
+            self.data_table = pn.widgets.Tabulator(
                 value=filtered_data,
                 pagination='local',
                 page_size=10, 
-                selectable=False,
-                header_filters=data_filters,
+                selectable=True,
+                header_filters=header_filters,
                 min_width=1200,
                 disabled=False,
                 sizing_mode="stretch_width",
@@ -338,9 +338,13 @@ class KMSUser(param.Parameterized):
                 selection=[],
                 configuration={
                     'layout': 'fitColumns',  
-                    'columns': column_configs
+                    'columns': column_width_configs
                 }
             )
+            
+            self.data_table.param.watch(self.on_selection_change, 'selection')
+            
+            self.popup_container = pn.Column() 
 
             # if documents.empty:
             #     empty_message = pn.pane.Markdown(
@@ -373,7 +377,8 @@ class KMSUser(param.Parameterized):
             #     temp_container.append(cards_container)
 
             self.document_cards.clear()
-            self.document_cards.append(data_table)
+            self.document_cards.append(self.data_table)
+            self.document_cards.append(self.popup_container)
             self.document_cards.visible = True
 
         except Exception as e:
@@ -390,6 +395,25 @@ class KMSUser(param.Parameterized):
             self.document_cards.clear()
             self.document_cards.append(error_message)
 
+    def on_selection_change(self, event):
+        try:
+            selection = self.data_table.selection
+            selected_row = self.data_table.value.iloc[selection[0]]
+            doc_id = selected_row['id']
+            content = selected_row['content']
+            
+            popup_content = f"### Document ID: {doc_id}\n\n**Content:**\n{content}"
+            
+            popup = pn.pane.Markdown(popup_content,
+                styles={'background': '#f8f9fa', 'border': '1px solid #ddd', 'padding': '10px', 'width': '100%'})
+        
+            # Show the popup (you can adjust the location as per your UI layout)
+            self.popup_container.clear()  # Clear previous popups
+            self.popup_container.append(popup)  # Append the new popup
+            
+        except Exception as e:
+            logger.error(f"Error in selection change: {str(e)}")
+                
     def _format_initial_data(self, documents):
         try:
             if documents is None or len(documents) == 0:

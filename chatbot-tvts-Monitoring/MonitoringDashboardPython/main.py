@@ -317,6 +317,7 @@ def check_admin_access(username, permissions):
     
     return True, ""
 
+
 # Create chatbot evalution table
 def create_chatbot_evaluation_table(inputPath: str):
     # Read data file from excel
@@ -326,38 +327,60 @@ def create_chatbot_evaluation_table(inputPath: str):
     df = df[needed_columns]
 
     # Rename columns using the rename() method
-    df = df.rename(columns={
-        'id': 'Id',
-        'main_input': 'Input',
-        'main_output': 'Output',
+    # df = df.rename(columns={
+    #     'id': 'Id',
+    #     'main_input': 'Input',
+    #     'main_output': 'Output',
+    #     'answer_relevance': "Answer Relevance",
+    #     'groundedness': "Groundedness",
+    #     # Add more as needed
+    # })
+    
+    column_titles = {
+        'main_input': 'Câu hỏi',
+        'main_output': 'Câu trả lời',
         'answer_relevance': "Answer Relevance",
         'groundedness': "Groundedness",
-        # Add more as needed
-    })
-
-    widths={
-        'index': '5%', 
-        'Id': '10%', 
-        'Input': '30%', 
-        'Output': '30%',
-        'Answer Relevance': '10%',
-        'Groundedness': '10%',
     }
+
+    column_widths={
+        'index': '10%', 
+        'id': '0%', 
+        'main_input': '35%', 
+        'main_output': '35%',
+        'answer_relevance': '10%',
+        'groundedness': '10%',
+    }
+    
+    column_configs = [
+        {
+            'field': col,
+            'title': column_titles.get(col, col),
+            'width': column_widths.get(col),
+            "editable": False,
+            'editor': False 
+        }
+        for col in df.columns.tolist()
+    ]
     
     # Define column widths and formatters if needed
     bokeh_formatters = {}  # Define formatters if necessary, e.g., for dates
 
     # Create the Tabulator widget to display the DataFrame
     table = pn.widgets.Tabulator(df,
-        widths=widths,
+        widths=column_widths,
         sizing_mode="stretch_width", 
         disabled=True,  # Set to False if you want the table to be editable
         formatters=bokeh_formatters,
         page_size=20,
         styles={'max-height': '100vh', 'overflow-y': 'auto'},
+        configuration={
+                    'layout': 'fitColumns',  
+                    'columns': column_configs
+                }
     )
     
-    table.hidden_columns = ['Id']
+    table.hidden_columns = ['id']
     
     table.on_click(show_evaluation)
     
@@ -394,7 +417,7 @@ def show_evaluation(event):
 def show_evaluation_popup(row_data: dict):
     # Show popup
     evaluation_details_popup.visible = True
-    evaluation_details_popup.title = f"Data id: {row_data['Id']}"
+    evaluation_details_popup.title = f"Testcase Id: {row_data['id']}"
     evaluation_details_popup[0].objects = [pn.Row()]
     popup_content = get_evaluation_popup_content(row_data)
     evaluation_details_popup[0].objects = popup_content
@@ -403,8 +426,8 @@ def show_evaluation_popup(row_data: dict):
 
 def get_evaluation_rating_ui(row_data):
     ratings = pn.Row(sizing_mode='stretch_width')
-    ans_rel = row_data["Answer Relevance"]
-    groundedness = row_data["Groundedness"]
+    ans_rel = row_data["answer_relevance"]
+    groundedness = row_data["groundedness"]
     
     ratings=pn.Row(
         pn.pane.Markdown(f"**Answer Relevance:** {ans_rel}", styles={'color': 'gray', 'font-size': '12px'}),
@@ -427,7 +450,7 @@ def get_evaluation_popup_content(row_data: dict):
         pn.Row(
             pn.widgets.ButtonIcon(icon="user", size="24px", width=24, height=24),
             pn.Column(
-                pn.pane.Markdown(f"{row_data['Input']}", styles={'background-color': '#f3f4f6', 'padding': '10px', 'border-radius': '8px', 'width': '100%'}),
+                pn.pane.Markdown(f"{row_data['main_input']}", styles={'background-color': '#f3f4f6', 'padding': '10px', 'border-radius': '8px', 'width': '100%'}),
                 sizing_mode="stretch_width",
             ),
             sizing_mode='stretch_width'
@@ -435,7 +458,7 @@ def get_evaluation_popup_content(row_data: dict):
         pn.Row(
             pn.widgets.ButtonIcon(icon="robot-face", size="24px", width=24, height=24),
             pn.Column(
-                pn.pane.Markdown(f"{row_data['Output']}", styles={'background-color': '#fef3c7', 'padding': '10px', 'border-radius': '8px', 'width': '100%'}),
+                pn.pane.Markdown(f"{row_data['main_output']}", styles={'background-color': '#fef3c7', 'padding': '10px', 'border-radius': '8px', 'width': '100%'}),
                 ratings,
                 sizing_mode="stretch_width",
             ),
@@ -490,6 +513,187 @@ def create_chatbot_evaluation_pie_charts(inputPath: str):
             'width': '30%', 
         }
     )
+    
+###########
+def create_conversation_table_from_file(inputPath: str):
+    global global_df
+    # Read data file from excel
+    df = pd.read_excel(inputPath)
+    
+    needed_columns = ['id', 'main_input', 'main_output', 'answer_relevance', 'groundedness', 'context_relevance', "sentiment", "csat", "conversation_id"]
+    global_df = df[needed_columns]
+    
+    grouped = global_df.groupby('conversation_id')
+    
+    summary_df = grouped.agg({
+        'main_input': 'first',    # Lấy main_input đầu tiên
+        'csat': 'mean'            # Tính trung bình csat
+    }).reset_index()
+    
+    summary_df['csat'] = summary_df['csat'].round(2)
+
+    column_titles = {
+        'main_input': 'Nội dung',
+        'csat': "Avg. CSAT"
+    }
+
+    column_widths={
+        'index': '10%', 
+        'id': '0%', 
+        'main_input': '80%', 
+        'main_output': '0%',
+        'answer_relevance': '0%',
+        'groundedness': '0%',
+        'context_relevance': '0%',
+        'sentiment': '0%',
+        'csat': '10%',
+        'conversation_id': '0%'
+    }
+    
+    column_configs = [
+        {
+            'field': col,
+            'title': column_titles.get(col, col),
+            'width': column_widths.get(col),
+            "editable": False,
+            'editor': False 
+        }
+        for col in global_df.columns.tolist()
+    ]
+    
+    # Define column widths and formatters if needed
+    bokeh_formatters = {}  # Define formatters if necessary, e.g., for dates
+
+    # Create the Tabulator widget to display the DataFrame
+    table = pn.widgets.Tabulator(
+        summary_df,
+        widths=column_widths,
+        sizing_mode="stretch_width", 
+        disabled=True,  # Set to False if you want the table to be editable
+        formatters=bokeh_formatters,
+        page_size=20,
+        styles={'max-height': '100vh', 'overflow-y': 'auto'},
+        configuration={
+                    'layout': 'fitColumns',  
+                    'columns': column_configs
+                }
+    )
+    
+    table.hidden_columns = ['id', 'main_output', 'answer_relevance', 'groundedness', 'context_relevance', 'sentiment', 'conversation_id']
+    
+    table.on_click(show_conversation_from_file)
+    
+    return table
+
+def create_conversation_details_popup_from_file():
+    # Nội dung popup
+    popup_content = pn.Column()
+
+    # Popup Modal để hiển thị chi tiết hội thoại
+    popup = pn.Card(
+        popup_content,
+        collapsible=False,
+        visible=False,  
+        styles={
+            'position': 'fixed', 'left': '50%', 'top': '50%', 
+            'transform': 'translate(-50%, -50%)', 'z-index': '1000',
+            'background': 'white', 'padding': '20px',
+            'width': '80%',  
+            'height': '80%', 'overflow-y': 'auto', 'overflow-x': 'hidden',
+            'border-radius': '8px', 'box-shadow': '0px 4px 10px rgba(0, 0, 0, 0.1)'
+        }
+    )
+
+    return popup
+
+def show_conversation_from_file(event):
+    global global_df
+    
+    if hasattr(event.model, 'source'):
+        data_source = event.model.source.data
+        row_index = event.row 
+        selected_conversation_id = data_source['conversation_id'][row_index]
+        matching_rows = global_df[global_df['conversation_id'] == selected_conversation_id]
+        show_conversation_popup_from_file(selected_conversation_id, matching_rows)
+        
+        # row_data = {col: data_source[col][row_index] for col in data_source}
+        # show_conversation_popup_from_file(row_data)
+
+def show_conversation_popup_from_file(conversation_id, matching_rows: list):
+    # Show popup
+    conversation_details_popup.visible = True
+    conversation_details_popup.title = f"Conversation id: {conversation_id}"
+    conversation_details_popup[0].objects = [pn.Row()]
+    
+    popup_content = get_conversation_popup_content_from_file(matching_rows)
+    conversation_details_popup[0].objects = popup_content
+
+    return
+
+def get_conversation_rating_ui_from_file(row_data):    
+    ratings = pn.Row(sizing_mode='stretch_width')
+    csat = pn.Row(sizing_mode='stretch_width')
+    
+    ans_rel = row_data["answer_relevance"]
+    groundedness = row_data["groundedness"]
+    con_rel = row_data["context_relevance"]
+    sentiment = row_data["sentiment"]
+    csat_score = row_data["csat"]
+    
+    csat = pn.Row(
+        pn.pane.Markdown(f"CSAT: {csat_score}", styles={'color': 'green', 'font-size': '14px'}),
+        sizing_mode='stretch_width'
+    )
+    ratings=pn.Row(
+        pn.pane.Markdown(f"**Answer Relevance:** {ans_rel}", styles={'color': 'gray', 'font-size': '12px'}),
+        pn.pane.Markdown(f"**Context Relevance:** {con_rel}", styles={'color': 'gray', 'font-size': '12px'}),
+        pn.pane.Markdown(f"**Groundedness:** {groundedness}", styles={'color': 'gray', 'font-size': '12px'}),
+        pn.pane.Markdown(f"**Sentiment:** {sentiment}", styles={'color': 'gray', 'font-size': '12px'}),
+        sizing_mode='stretch_width'
+    )
+    
+    return [ratings, csat]
+
+def get_conversation_popup_content_from_file(matching_rows: list):
+    record_panes = []
+
+    for _, row_data in matching_rows.iterrows():
+        
+        [ratings, csat] = get_conversation_rating_ui_from_file(row_data)
+    
+        record_pane = pn.Column(
+            pn.Row(
+                pn.pane.Markdown(f"**Record:** {row_data['id']}", styles={'color': 'gray', 'font-size': '14px'}),
+                csat,
+                sizing_mode='stretch_width'
+            ),
+            pn.Row(
+                pn.widgets.ButtonIcon(icon="user", size="24px", width=24, height=24),
+                pn.Column(
+                    pn.pane.Markdown(f"{row_data['main_input']}", styles={'background-color': '#f3f4f6', 'padding': '10px', 'border-radius': '8px', 'width': '100%'}),
+                    sizing_mode="stretch_width",
+                ),
+                sizing_mode='stretch_width'
+            ),
+            pn.Row(
+                pn.widgets.ButtonIcon(icon="robot-face", size="24px", width=24, height=24),
+                pn.Column(
+                    pn.pane.Markdown(f"{row_data['main_output']}", styles={'background-color': '#fef3c7', 'padding': '10px', 'border-radius': '8px', 'width': '100%'}),
+                    ratings,
+                    sizing_mode="stretch_width",
+                ),
+                sizing_mode='stretch_width'
+            ),
+            pn.layout.HSpacer(height=10)
+        )
+        record_panes.append(record_pane)
+
+    # Nút đóng popup
+    close_button = pn.widgets.Button(name="OK", button_type="primary")
+    close_button.on_click(lambda event: setattr(conversation_details_popup, 'visible', False))
+
+    return [*record_panes, pn.Row(pn.layout.HSpacer(), close_button), pn.layout.HSpacer(height=20)]
+
 
 # -----Dashboard UI
 
@@ -502,17 +706,28 @@ has_access, error_msg = check_admin_access(username, permissions)
 pn.state.admin_permissions = has_access
 
 if True:
-    # Create the table with conversations
-    conversation_table, control = create_conversation_table()
+    # # Create the table with conversations
+    # conversation_table, control = create_conversation_table()
 
-    # Popup conversation details
-    conversation_details_popup = create_conversation_details_popup()
+    # # Popup conversation details
+    # conversation_details_popup = create_conversation_details_popup()
     
-    # Create the table conversation
+    # # Create the table conversation
+    # conversation_evaluation = pn.Column(
+    #     conversation_table,
+    #     conversation_details_popup  # Popup hiển thị đè lên table
+    # )
+    
+    ####
+    import os
+    file_path = os.path.join(os.path.dirname(__file__), "conversation-data.xlsx")
+    conversation_table = create_conversation_table_from_file(file_path)
+    conversation_details_popup = create_conversation_details_popup_from_file()
     conversation_evaluation = pn.Column(
         conversation_table,
         conversation_details_popup  # Popup hiển thị đè lên table
     )
+    ####
 
 
     # Create table chatbot evaluation
@@ -525,11 +740,102 @@ if True:
 
     evaluation_details_popup = create_evaluation_details_popup()
     
+    evaluate_button = pn.widgets.Button(name="Thực hiện đánh giá", button_type="primary", width=200)
+    
+    # Overlay nền mờ
+    overlay_background = pn.pane.HTML(
+        """<div style="position: fixed; top: 0; left: 0; 
+            width: 100vw; height: 100vh; 
+            background-color: rgba(0, 0, 0, 0.4); z-index: 999;">&nbsp;</div>""",
+        visible=False,
+        sizing_mode="stretch_both"
+    )
+    
+    # Hộp thoại xác nhận (giả lập)
+    confirm_text = pn.pane.Markdown("**Bạn có muốn thực hiện đánh giá lại hệ thống chatbot trên toàn bộ dữ liệu kiểm thử không?**")
+    confirm_yes = pn.widgets.Button(name="Đồng ý", button_type="success", width=100)
+    confirm_no = pn.widgets.Button(name="Hủy", button_type="danger", width=100)
+    confirm_dialog = pn.Column(
+        confirm_text, 
+        pn.Row(confirm_yes, confirm_no, align="center"),
+        align="center", 
+        visible=False, 
+        styles={
+            "position": "fixed",
+            "top": "50%",
+            "left": "50%",
+            "transform": "translate(-50%, -50%)",
+            "z_index": "1000",
+            "box-shadow": "0 4px 20px rgba(0,0,0,0.2)",
+            "padding": "20px",
+            "border-radius": "8px",
+            "background": "#ffffff",
+            "text-align": "center"
+        },
+        width=500)
+
+    
+    # Popup loading (giả lập)
+    loading_spinner = pn.indicators.LoadingSpinner(value=True, width=25, height=25)
+    loading_text = pn.pane.Markdown("**Đang đánh giá...**")
+    stop_button = pn.widgets.Button(name="Dừng", button_type="danger", width=100)
+    loading_popup = pn.Column(
+        pn.Row(loading_spinner, loading_text, align="center"), 
+        pn.Row(stop_button, align="center"),
+        align="center",
+        visible=False, 
+        styles={
+            "position": "fixed",
+            "top": "50%",
+            "left": "50%",
+            "transform": "translate(-50%, -50%)",
+            "z_index": "1000",
+            "box-shadow": "0 4px 20px rgba(0,0,0,0.2)",
+            "padding": "20px",
+            "border-radius": "8px",
+            "background": "#ffffff",
+            "text-align": "center"
+        },
+        width=300)
+
+    
+    def on_evaluate_click(event):
+        overlay_background.visible = True
+        confirm_dialog.visible = True
+
+    def on_confirm_yes(event):
+        confirm_dialog.visible = False
+        loading_popup.visible = True
+
+    def on_confirm_no(event):
+        overlay_background.visible = False
+        confirm_dialog.visible = False
+
+    def on_stop_click(event):
+        loading_popup.visible = False
+        overlay_background.visible = False
+
+    # Gắn callback
+    evaluate_button.on_click(on_evaluate_click)
+    confirm_yes.on_click(on_confirm_yes)
+    confirm_no.on_click(on_confirm_no)
+    stop_button.on_click(on_stop_click)
+
     # Create the table chatbot evaluation
-    chatbot_evaluation = pn.Row(
-        chatbot_evaluation_table,
-        chatbot_evaluation_pie_charts,
-        evaluation_details_popup
+    chatbot_evaluation = pn.Column(
+        pn.Row(
+            pn.Spacer(width=0, sizing_mode="stretch_width"),
+            evaluate_button,
+            sizing_mode="stretch_width"
+        ),
+        pn.Row(
+            chatbot_evaluation_table,
+            chatbot_evaluation_pie_charts,
+            evaluation_details_popup
+        ),
+        overlay_background,
+        confirm_dialog,
+        loading_popup
     )
 
     # Create tabs
@@ -541,7 +847,7 @@ if True:
     # Create the Panel layout
     dashboard = pn.Column(
         conversation_table,
-        control,
+        # control,
         conversation_details_popup  
     )
 

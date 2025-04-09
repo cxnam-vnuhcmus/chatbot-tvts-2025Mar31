@@ -702,34 +702,53 @@ class KMSAdmin(param.Parameterized):
             'is_duplicate': '10%',
             'conflict_status': '10%',
         }
-
-        column_configs = [
-            {'field': col, 'title': self.column_titles.get(col, col), 'width': self.column_widths[col]}
-            for col in available_columns if col in self.column_widths
+        
+        dropdown_columns = {
+                # 'approval_status': ['Approved', 'Rejected', 'Pending'], 
+                # 'is_duplicate': ['Không trùng lắp', 'Có trùng lắp'], 
+                # 'conflict_status': ['Không mâu thuẫn', 'Có mâu thuẫn']
+            } 
+        
+        column_width_configs = [
+            {
+                'field': col,
+                'title': self.column_titles.get(col, col),
+                'width': self.column_widths.get(col),
+                "editable": False,
+                'editor': False 
+            }
+            for col in list(self.column_widths.keys())
         ]
 
-        column_titles = []
-        for col in available_columns:
-            column_titles.append(self.column_titles.get(col, col))
+        header_filters = {
+            col: {
+                'type': 'list' if col in dropdown_columns else 'input',  # Kiểu 'select' hoặc 'input' tùy theo cột
+                'values': list(sorted(dropdown_columns[col])) if col in dropdown_columns else []  # Giá trị dropdown nếu có, hoặc danh sách rỗng cho input
+            }
+            for col in list(self.column_widths.keys())
+        } 
+
+        # column_titles = []
+        # for col in available_columns:
+        #     column_titles.append(self.column_titles.get(col, col))
         
         self.data_table = pn.widgets.Tabulator(
             value=filtered_data,
             pagination='local',
             page_size=10, 
-            selectable=1,
-            header_filters=self.data_filters,
-            height=400,
+            selectable=True,
+            header_filters=header_filters,
             min_width=1200,
             disabled=False,
             sizing_mode="stretch_width",
+            styles={'height': '80vh'},
             show_index=False,
-            text_align='left',
             theme='bootstrap5',
             theme_classes=['table-striped', 'table-bordered'],
             selection=[],
             configuration={
-                'layout': 'fitColumns',  # Co giãn vừa khít bảng
-                'columns': column_configs
+                'layout': 'fitColumns',  
+                'columns': column_width_configs
             }
         )
         self.doc_type_selector.param.watch(self.filter_by_status, 'value')
