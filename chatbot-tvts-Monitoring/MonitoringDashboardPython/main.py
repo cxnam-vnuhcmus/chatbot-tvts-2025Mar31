@@ -323,31 +323,23 @@ def create_chatbot_evaluation_table(inputPath: str):
     # Read data file from excel
     df = pd.read_excel(inputPath)
     
-    needed_columns = ['id', 'main_input', 'main_output', 'answer_relevance', 'groundedness']
+    needed_columns = ['id', 'main_input', 'main_output', 'chatbot_answer', 'answer_relevance', 'groundedness', ]
     df = df[needed_columns]
-
-    # Rename columns using the rename() method
-    # df = df.rename(columns={
-    #     'id': 'Id',
-    #     'main_input': 'Input',
-    #     'main_output': 'Output',
-    #     'answer_relevance': "Answer Relevance",
-    #     'groundedness': "Groundedness",
-    #     # Add more as needed
-    # })
     
     column_titles = {
         'main_input': 'Câu hỏi',
-        'main_output': 'Câu trả lời',
-        'answer_relevance': "Answer Relevance",
-        'groundedness': "Groundedness",
+        'main_output': 'Câu trả lời đã kiểm định',
+        'chatbot_answer': 'Chatbot trả lời',
+        'answer_relevance': "Mức độ liên quan",
+        'groundedness': "Mức độ chính xác",
     }
 
     column_widths={
-        'index': '10%', 
+        'index': '5%', 
         'id': '0%', 
-        'main_input': '35%', 
-        'main_output': '35%',
+        'main_input': '25%', 
+        'main_output': '25%',
+        'chatbot_answer': '25%',
         'answer_relevance': '10%',
         'groundedness': '10%',
     }
@@ -372,8 +364,9 @@ def create_chatbot_evaluation_table(inputPath: str):
         sizing_mode="stretch_width", 
         disabled=True,  # Set to False if you want the table to be editable
         formatters=bokeh_formatters,
-        page_size=20,
         styles={'max-height': '100vh', 'overflow-y': 'auto'},
+        page_size=20,
+        pagination='local',
         configuration={
                     'layout': 'fitColumns',  
                     'columns': column_configs
@@ -430,8 +423,8 @@ def get_evaluation_rating_ui(row_data):
     groundedness = row_data["groundedness"]
     
     ratings=pn.Row(
-        pn.pane.Markdown(f"**Answer Relevance:** {ans_rel}", styles={'color': 'gray', 'font-size': '12px'}),
-        pn.pane.Markdown(f"**Groundedness:** {groundedness}", styles={'color': 'gray', 'font-size': '12px'}),
+        pn.pane.Markdown(f"**Mức độ liên quan:** {ans_rel}", styles={'color': 'gray', 'font-size': '12px'}),
+        pn.pane.Markdown(f"**Mức độ chính xác:** {groundedness}", styles={'color': 'gray', 'font-size': '12px'}),
         sizing_mode='stretch_width'
     )
     
@@ -456,9 +449,18 @@ def get_evaluation_popup_content(row_data: dict):
             sizing_mode='stretch_width'
         ),
         pn.Row(
+            pn.widgets.ButtonIcon(icon="eye", size="24px", width=24, height=24),
+            pn.Column(
+                pn.pane.Markdown(f"{row_data['main_output']}", styles={'background-color': '#d1fae5', 'padding': '10px', 'border-radius': '8px', 'width': '100%'}),
+                sizing_mode="stretch_width",
+            ),
+            sizing_mode='stretch_width'
+        ),
+        pn.Row(pn.Spacer(height=20)),
+        pn.Row(
             pn.widgets.ButtonIcon(icon="robot-face", size="24px", width=24, height=24),
             pn.Column(
-                pn.pane.Markdown(f"{row_data['main_output']}", styles={'background-color': '#fef3c7', 'padding': '10px', 'border-radius': '8px', 'width': '100%'}),
+                pn.pane.Markdown(f"{row_data['chatbot_answer']}", styles={'background-color': '#fef3c7', 'padding': '10px', 'border-radius': '8px', 'width': '100%'}),
                 ratings,
                 sizing_mode="stretch_width",
             ),
@@ -483,12 +485,12 @@ def create_chatbot_evaluation_pie_charts(inputPath: str):
     # Average Answer Relevance pie chart
     avg_answer_relevance = df["answer_relevance"].mean()
     avg_answer_relevance_percent = avg_answer_relevance * 100 / 5
-    labels_1 = ['Answer Relevance', 'Not Answer Relevance']
+    labels_1 = ['Liên quan', 'Chưa liên quan']
     sizes_1 = [avg_answer_relevance_percent, 100-avg_answer_relevance_percent]
 
     fig = go.Figure(data=[go.Pie(labels=labels_1, values=sizes_1)])
     fig.update_layout(
-        title={ 'text': 'Avg. Answer Relevance', 'x': 0.5, 'xanchor': 'center' },
+        title={ 'text': 'Câu trả lời có liên quan đến câu hỏi', 'x': 0.5, 'xanchor': 'center' },
         height=300
     )
     pie_avg_answer_relevance = pn.pane.Plotly(fig)
@@ -496,12 +498,12 @@ def create_chatbot_evaluation_pie_charts(inputPath: str):
     # Average Groundedness pie chart
     avg_groundedness = df["groundedness"].mean()
     avg_groundedness_percent = avg_groundedness * 100 / 5
-    labels_2 = ['Groundedness', 'Not Groundedness']
+    labels_2 = ['Đúng', 'Chưa đúng']
     sizes_2 = [avg_groundedness_percent, 100-avg_groundedness_percent]
 
     fig2 = go.Figure(data=[go.Pie(labels=labels_2, values=sizes_2)])
     fig2.update_layout(
-        title={ 'text': 'Avg. Groundedness', 'x': 0.5, 'xanchor': 'center' },
+        title={ 'text': 'Câu trả lời chứa thông tin đúng', 'x': 0.5, 'xanchor': 'center' },
         height=300
     )
     pie_groundedness = pn.pane.Plotly(fig2)
@@ -572,6 +574,7 @@ def create_conversation_table_from_file(inputPath: str):
         disabled=True,  # Set to False if you want the table to be editable
         formatters=bokeh_formatters,
         page_size=20,
+        pagination='local',
         styles={'max-height': '100vh', 'overflow-y': 'auto'},
         configuration={
                     'layout': 'fitColumns',  
