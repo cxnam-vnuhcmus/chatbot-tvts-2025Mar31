@@ -522,7 +522,7 @@ def create_conversation_table_from_file(inputPath: str):
     # Read data file from excel
     df = pd.read_excel(inputPath)
     
-    needed_columns = ['id', 'main_input', 'main_output', 'answer_relevance', 'groundedness', 'context_relevance', "sentiment", "csat", "conversation_id"]
+    needed_columns = ['id', 'main_input', 'main_output', 'answer_relevance', 'groundedness', 'context_relevance', "sentiment", "csat", "conversation_id", "chatbot_answer"]
     global_df = df[needed_columns]
     
     grouped = global_df.groupby('conversation_id')
@@ -532,7 +532,7 @@ def create_conversation_table_from_file(inputPath: str):
         'csat': 'mean'            # Tính trung bình csat
     }).reset_index()
     
-    summary_df['csat'] = summary_df['csat'].round(2)
+    summary_df['csat'] = summary_df['csat'].apply(lambda x: f"{x:.2f}")
 
     column_titles = {
         'main_input': 'Nội dung',
@@ -544,6 +544,7 @@ def create_conversation_table_from_file(inputPath: str):
         'id': '0%', 
         'main_input': '80%', 
         'main_output': '0%',
+        'chatbot_answer': '0%',
         'answer_relevance': '0%',
         'groundedness': '0%',
         'context_relevance': '0%',
@@ -582,7 +583,7 @@ def create_conversation_table_from_file(inputPath: str):
                 }
     )
     
-    table.hidden_columns = ['id', 'main_output', 'answer_relevance', 'groundedness', 'context_relevance', 'sentiment', 'conversation_id']
+    table.hidden_columns = ['id', 'main_output', 'answer_relevance', 'groundedness', 'context_relevance', 'sentiment', 'conversation_id', 'chatbot_answer']
     
     table.on_click(show_conversation_from_file)
     
@@ -681,7 +682,7 @@ def get_conversation_popup_content_from_file(matching_rows: list):
             pn.Row(
                 pn.widgets.ButtonIcon(icon="robot-face", size="24px", width=24, height=24),
                 pn.Column(
-                    pn.pane.Markdown(f"{row_data['main_output']}", styles={'background-color': '#fef3c7', 'padding': '10px', 'border-radius': '8px', 'width': '100%'}),
+                    pn.pane.Markdown(f"{row_data['chatbot_answer']}", styles={'background-color': '#fef3c7', 'padding': '10px', 'border-radius': '8px', 'width': '100%'}),
                     ratings,
                     sizing_mode="stretch_width",
                 ),
