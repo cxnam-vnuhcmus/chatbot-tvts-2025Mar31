@@ -19,9 +19,8 @@ class AsyncConflictProcessor:
     """
     Asynchronous Conflict Processor Using OpenAI
     """
-    
     def __init__(self, data_manager: DatabaseManager, chroma_manager: ChromaManager,
-                max_workers: int = 3, queue_size: int = 100):
+             max_workers: int = 3, queue_size: int = 100):
         self.data_manager = data_manager
         self.chroma_manager = chroma_manager
         self.max_workers = max_workers
@@ -48,11 +47,42 @@ class AsyncConflictProcessor:
         self.results_cache = {}
         self.processing_status = {}
         
+        self.processed_pairs = set()  
+        self.pair_cache = {}         
+        
         self.running = True
         self.worker_thread = threading.Thread(target=self._process_queue, daemon=True)
         self.worker_thread.start()
         
         logger.info(f"AsyncConflictProcessor initialized with {max_workers} workers")
+
+    
+    def _manage_cache(self):
+        """Manage cache size to prevent memory issues"""
+        max_cache_entries = 1000  
+        
+        if len(self.results_cache) > max_cache_entries:
+            sorted_keys = sorted(
+                self.results_cache.keys(),
+                key=lambda k: self.results_cache[k].get('completed_at', ''),
+                reverse=True
+            )
+            
+            keys_to_keep = sorted_keys[:int(max_cache_entries * 0.7)]
+            self.results_cache = {k: self.results_cache[k] for k in keys_to_keep}
+            logger.info(f"Cleaned results cache, kept {len(keys_to_keep)} entries")
+        
+        if hasattr(self, 'pair_cache') and len(self.pair_cache) > max_cache_entries:
+            keys = list(self.pair_cache.keys())
+            keys_to_keep = keys[:int(max_cache_entries * 0.7)]
+            self.pair_cache = {k: self.pair_cache[k] for k in keys_to_keep}
+            logger.info(f"Cleaned pair cache, kept {len(keys_to_keep)} entries")
+        
+        if hasattr(self, 'processed_pairs') and len(self.processed_pairs) > max_cache_entries * 2:
+            self.processed_pairs.clear()
+            logger.info("Cleared processed pairs tracking set")
+
+
     
     def get_queue_stats(self):
         """Returns statistics about the queue"""
@@ -64,9 +94,20 @@ class AsyncConflictProcessor:
             "cache_size": len(self.results_cache)
         }
         
+
     def _process_queue(self):
+        import random  
+        
+        cache_check_counter = 0
+        cache_check_interval = 20  
+        
         while self.running:
             try:
+                cache_check_counter += 1
+                if cache_check_counter >= cache_check_interval:
+                    self._manage_cache()
+                    cache_check_counter = 0
+                    
                 if self.task_queue.empty():
                     time.sleep(1)
                     continue
@@ -198,9 +239,10 @@ class AsyncConflictProcessor:
             logger.error(f"Error adding content to queue: {str(e)}")
             return None
             
+
     def queue_chunk_pair(self, chunk1: Dict, chunk2: Dict, conflict_type: str = "internal", priority: int = 3) -> str:
         """
-        Add a pair of chunks to the queue for conflict analysis
+        Add a pair of chunks to the queue for conflict analysis with deduplication
 
         Args:
         chunk1: First chunk
@@ -211,30 +253,46 @@ class AsyncConflictProcessor:
         Returns:
         str: ID of the task
         """
-        task_id = f"pair_{chunk1['id']}_{chunk2['id']}_{int(time.time())}"
+        chunk_ids = sorted([chunk1['id'], chunk2['id']])
+        task_id = f"pair_{chunk_ids[0]}_{chunk_ids[1]}_{int(time.time())}"
+        
+        if not hasattr(self, 'processed_pairs'):
+            self.processed_pairs = set()
+        
+        pair_key = f"{conflict_type}_{chunk_ids[0]}_{chunk_ids[1]}"
+        
+        if pair_key in self.processed_pairs:
+            logger.info(f"Chunk pair {pair_key} already queued or processed recently")
+            return f"existing_{pair_key}"
+        
+        self.processed_pairs.add(pair_key)
+        
         task = {
             'type': 'chunk_pair',
             'chunk1': chunk1,
             'chunk2': chunk2,
-            'conflict_type': conflict_type
+            'conflict_type': conflict_type,
+            'pair_key': pair_key 
         }
         
         try:
             self.task_queue.put((priority, task_id, task))
             self.processing_status[task_id] = "queued"
-            logger.info(f"Added chunk pair to queue with ID {task_id}")
+            logger.info(f"Added chunk pair {pair_key} to queue with ID {task_id}")
             return task_id
         except Exception as e:
             logger.error(f"Error adding chunk pair to queue: {str(e)}")
+            self.processed_pairs.remove(pair_key)
             return None
      
+
     def _analyze_document(self, doc_id: str) -> Dict:
         """
-        Analyze conflicts for the entire document
-
+        Analyze conflicts for the entire document 
+        
         Args:
         doc_id: ID of the document
-
+        
         Returns:
         Dict: Results of the conflict analysis
         """
@@ -271,14 +329,27 @@ class AsyncConflictProcessor:
                     conflict_key = f"content_{chunk.get('id')}"
                     if conflict_key not in processed_conflict_keys:
                         processed_conflict_keys.add(conflict_key)
-                        content_conflicts.append({
+                        
+                        # Create conflict data with rich information
+                        conflict_data = {
                             "chunk_id": chunk.get('id'),
                             "explanation": result.explanation,
                             "conflicting_parts": result.conflicting_parts,
                             "analyzed_at": datetime.now().isoformat(),
                             "contradictions": result.contradictions if hasattr(result, 'contradictions') else []
-                        })
-                    
+                        }
+                        
+                        # Add information about contradiction types if available
+                        contradiction_types = []
+                        for contradiction in result.contradictions:
+                            if "type" in contradiction and contradiction["type"] not in contradiction_types:
+                                contradiction_types.append(contradiction["type"])
+                        
+                        if contradiction_types:
+                            conflict_data["contradiction_types"] = contradiction_types
+                        
+                        content_conflicts.append(conflict_data)
+                        
             # 2. internal conflicts
             internal_conflicts = []
             if len(chunks) >= 2:
@@ -305,14 +376,25 @@ class AsyncConflictProcessor:
                         )
                         
                         if result.has_conflict:
-                            internal_conflicts.append({
+                            conflict_data = {
                                 "chunk_ids": [chunk1.get('id'), chunk2.get('id')],
                                 "explanation": result.explanation,
                                 "conflicting_parts": result.conflicting_parts,
                                 "analyzed_at": datetime.now().isoformat(),
                                 "contradictions": result.contradictions if hasattr(result, 'contradictions') else []
-                            })
-                        
+                            }
+                            
+                            # Add information about contradiction types if available
+                            contradiction_types = []
+                            for contradiction in result.contradictions:
+                                if "type" in contradiction and contradiction["type"] not in contradiction_types:
+                                    contradiction_types.append(contradiction["type"])
+                            
+                            if contradiction_types:
+                                conflict_data["contradiction_types"] = contradiction_types
+                                
+                            internal_conflicts.append(conflict_data)
+                            
             # 3. external conflicts
             external_conflicts = []
             duplicate_group_id = document.get('duplicate_group_id')
@@ -320,10 +402,20 @@ class AsyncConflictProcessor:
             if duplicate_group_id:
                 group_docs = self.data_manager.get_documents_in_group(duplicate_group_id)
                 
+                # Track already processed document pairs to avoid redundant analysis
+                processed_doc_pairs = set()
+                
                 for group_doc in group_docs:
                     if group_doc['id'] == doc_id:
                         continue
                         
+                    # Generate a unique key for each document pair
+                    doc_pair = tuple(sorted([doc_id, group_doc['id']]))
+                    if doc_pair in processed_doc_pairs:
+                        continue
+                    
+                    processed_doc_pairs.add(doc_pair)
+                    
                     group_chunks = self.chroma_manager.get_chunks_by_document_id(group_doc['id'])
                     if not group_chunks:
                         continue
@@ -348,15 +440,38 @@ class AsyncConflictProcessor:
                             )
                             
                             if result.has_conflict:
-                                external_conflicts.append({
+                                conflict_data = {
                                     "chunk_ids": [chunk1.get('id'), chunk2.get('id')],
                                     "documents": [doc_id, group_doc['id']],
                                     "explanation": result.explanation,
                                     "conflicting_parts": result.conflicting_parts,
                                     "analyzed_at": datetime.now().isoformat(),
                                     "contradictions": result.contradictions if hasattr(result, 'contradictions') else []
-                                })
-                            
+                                }
+                                
+                                # Add information about contradiction types if available
+                                contradiction_types = []
+                                for contradiction in result.contradictions:
+                                    if "type" in contradiction and contradiction["type"] not in contradiction_types:
+                                        contradiction_types.append(contradiction["type"])
+                                
+                                if contradiction_types:
+                                    conflict_data["contradiction_types"] = contradiction_types
+                                    
+                                external_conflicts.append(conflict_data)
+                                
+            # Count direct and indirect conflicts
+            direct_conflicts = 0
+            indirect_conflicts = 0
+            
+            for conflicts in [content_conflicts, internal_conflicts, external_conflicts]:
+                for conflict in conflicts:
+                    for contradiction in conflict.get("contradictions", []):
+                        if contradiction.get("type") == "trực tiếp":
+                            direct_conflicts += 1
+                        elif contradiction.get("type") == "gián tiếp":
+                            indirect_conflicts += 1
+            
             has_conflicts = bool(content_conflicts or internal_conflicts or external_conflicts)
             conflict_info = {
                 "has_conflicts": has_conflicts,
@@ -366,6 +481,14 @@ class AsyncConflictProcessor:
                 "last_updated": datetime.now().isoformat(),
                 "analysis_duration_seconds": round(time.time() - start_time, 2)
             }
+            
+            # Add summary of contradiction types
+            if direct_conflicts or indirect_conflicts:
+                conflict_info["contradiction_types"] = {
+                    "direct": direct_conflicts,
+                    "indirect": indirect_conflicts,
+                    "total": direct_conflicts + indirect_conflicts
+                }
             
             self.data_manager.update_document_status(doc_id, {
                 'has_conflicts': has_conflicts,
@@ -388,10 +511,10 @@ class AsyncConflictProcessor:
                 "external_conflicts": [],
                 "last_updated": datetime.now().isoformat()
             }
-    
+
     def _analyze_chunk_pair(self, chunk1: Dict, chunk2: Dict, conflict_type: str = "internal") -> Dict:
         """
-        Analyze conflict between two chunks
+        Analyze conflict between two chunks with improved caching
 
         Args:
         chunk1: First chunk
@@ -407,6 +530,13 @@ class AsyncConflictProcessor:
         try:
             if not chunk1.get('original_text') or not chunk2.get('original_text'):
                 return {"error": "Thiếu nội dung chunk", "has_conflicts": False}
+            
+            chunk_ids = sorted([chunk1.get('id'), chunk2.get('id')])
+            cache_key = f"{conflict_type}_{chunk_ids[0]}_{chunk_ids[1]}"
+            
+            if hasattr(self, 'pair_cache') and cache_key in self.pair_cache:
+                logger.info(f"Using cached result for chunk pair {cache_key}")
+                return self.pair_cache[cache_key]
                 
             result = self.analyzer.analyze_conflict(
                 chunk1.get('original_text'),
@@ -414,7 +544,7 @@ class AsyncConflictProcessor:
                 conflict_type=conflict_type
             )
             
-            return {
+            response = {
                 "has_conflicts": result.has_conflict,
                 "explanation": result.explanation,
                 "conflicting_parts": result.conflicting_parts,
@@ -422,6 +552,20 @@ class AsyncConflictProcessor:
                 "analyzed_at": datetime.now().isoformat(),
                 "contradictions": result.contradictions if hasattr(result, 'contradictions') else []
             }
+            
+            contradiction_types = []
+            for contradiction in result.contradictions:
+                if "type" in contradiction and contradiction["type"] not in contradiction_types:
+                    contradiction_types.append(contradiction["type"])
+            
+            if contradiction_types:
+                response["contradiction_types"] = contradiction_types
+            
+            if not hasattr(self, 'pair_cache'):
+                self.pair_cache = {}
+            self.pair_cache[cache_key] = response
+            
+            return response
             
         except Exception as e:
             logger.error(f"Lỗi phân tích cặp chunk: {str(e)}")

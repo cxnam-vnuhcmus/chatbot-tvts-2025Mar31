@@ -156,6 +156,14 @@ class DatabaseManager:
 
     def init_db(self):
         try:
+            check_table_query = """
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'documents'
+                );
+            """
+            table_exists = self.execute_with_retry(check_table_query, fetch=True)
+            
             create_base_documents = """
                 CREATE TABLE IF NOT EXISTS documents (
                     id VARCHAR(100) PRIMARY KEY,
@@ -201,7 +209,7 @@ class DatabaseManager:
                     needs_conflict_reanalysis BOOLEAN DEFAULT FALSE
                 );
             """
-                
+
             add_missing_columns = """
                 DO $$ 
                 BEGIN
@@ -217,6 +225,14 @@ class DatabaseManager:
                         WHERE table_name = 'documents' AND column_name = 'conflict_status'
                     ) THEN
                         ALTER TABLE documents ADD COLUMN conflict_status VARCHAR(50) DEFAULT 'No Conflict';
+                    END IF;
+                    
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name = 'documents' AND column_name = 'detailed_analysis'
+                    ) THEN
+                        ALTER TABLE documents ADD COLUMN detailed_analysis TEXT;
+                        RAISE NOTICE 'Added detailed_analysis column to documents table';
                     END IF;
                     
                     IF NOT EXISTS (
@@ -252,6 +268,13 @@ class DatabaseManager:
                         WHERE table_name = 'documents' AND column_name = 'needs_conflict_reanalysis'
                     ) THEN
                         ALTER TABLE documents ADD COLUMN needs_conflict_reanalysis BOOLEAN DEFAULT FALSE;
+                    END IF;
+                    
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name = 'documents' AND column_name = 'original_chunked_doc'
+                    ) THEN
+                        ALTER TABLE documents ADD COLUMN original_chunked_doc VARCHAR(100);
                     END IF;
                 END $$;
             """
@@ -752,7 +775,8 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Database initialization error: {str(e)}")
             logger.error(traceback.format_exc())
-
+    
+    
     def store_chunk_conflict(self, doc_id: str, chunk_ids: List[str],
                 explanation: str, conflicting_parts: List[str],
                 conflict_type: str = 'content', force_both_docs: bool = True) -> bool:
@@ -984,17 +1008,38 @@ class DatabaseManager:
         try:
             with self.engine.connect() as conn:
                 query = """
-                    SELECT * FROM documents 
+                    SELECT 
+                        id, content, categories, tags, 
+                        start_date, end_date, unit, sender,
+                        created_date, approval_status, approver, 
+                        approval_date, is_duplicate, duplicate_group_id,
+                        processing_status, scan_status, chunk_status,
+                        modified_date, similarity_score, original_chunked_doc,
+                        conflict_status, has_conflicts
+                    FROM documents 
                     ORDER BY created_date DESC
                 """
+                
+                
+                logger.info(f"Executing query: {query}")
                 result = pd.read_sql(query, conn)
+                
+                if result is not None and len(result) > 0:
+                    if 'created_date' in result.columns:
+                        sample_dates = result['created_date'].head().tolist()
+                        logger.info(f"Sample created_dates: {sample_dates}")
+                    else:
+                        logger.warning("created_date column not found in query results!")
+                        logger.info(f"Available columns: {result.columns.tolist()}")
+                
                 logger.info(f"Retrieved {len(result)} documents in total")
                 return result
+            
         except Exception as e:
             logger.error(f"Error in get_all_documents: {str(e)}")
             logger.error(traceback.format_exc())
             return pd.DataFrame()
-
+    
     def get_document_by_id(self, doc_id):
         try:
             with self.engine.connect() as conn:
@@ -1025,7 +1070,8 @@ class DatabaseManager:
                             OR scan_status = 'ScanFailed'
                             OR (
                                 processing_status = 'Processing'
-                                AND modified_date < NOW() - INTERVAL '1 hour'
+                                AND modified_date IS NOT NULL
+                                AND CAST(modified_date AS timestamp) < NOW() - INTERVAL '1 hour'
                             )
                         )
                     )
@@ -1114,7 +1160,8 @@ class DatabaseManager:
                                 WHEN scan_status IS NULL OR scan_status = '' THEN true
                                 WHEN scan_status = 'ScanFailed' THEN true
                                 WHEN processing_status = 'Processing' 
-                                    AND modified_date < NOW() - INTERVAL '1 hour' THEN true
+                                    AND modified_date IS NOT NULL
+                                    AND CAST(modified_date AS timestamp) < NOW() - INTERVAL '1 hour' THEN true
                                 ELSE false
                             END as needs_rescan
                         FROM documents
@@ -1133,7 +1180,8 @@ class DatabaseManager:
                                 OR scan_status = ''
                                 OR (
                                     processing_status = 'Processing'
-                                    AND modified_date < NOW() - INTERVAL '1 hour'
+                                    AND modified_date IS NOT NULL
+                                    AND CAST(modified_date AS timestamp) < NOW() - INTERVAL '1 hour'
                                 )
                             )
                         )
@@ -1176,7 +1224,6 @@ class DatabaseManager:
             
             with self.engine.connect() as conn:
                 if isinstance(status, list):
-                    # Sửa: Tạo truy vấn dùng bind parameters theo đúng định dạng
                     placeholders = ','.join([':status' + str(i) for i in range(len(status))])
                     query_str = f"""
                         SELECT * FROM documents 
@@ -1185,7 +1232,6 @@ class DatabaseManager:
                     """
                     query = text(query_str)
                     
-                    # Tạo dictionary param đúng cách
                     params = {}
                     for i, s in enumerate(status):
                         params['status' + str(i)] = s
@@ -1212,134 +1258,6 @@ class DatabaseManager:
             logger.error(traceback.format_exc())
             return pd.DataFrame()
     
-    def get_chunks_by_document_id(self, doc_id: str, limit: int = None):
-        """
-        Get chunks of document by ID, handle duplicate documents, with pagination
-
-        Args:
-        doc_id (str): ID of document
-        limit (int, optional): Limit the number of chunks returned
-
-        Returns:
-        list: List of chunks or None if not found
-
-        """
-        try:
-            if not doc_id:
-                return None
-                
-            document = self.data_manager.get_document_by_id(doc_id)
-            if not document:
-                return None
-
-            logger.info(f"""[DEBUG] Tìm chunks cho doc_id={doc_id}:
-                - chunk_status: {document.get('chunk_status')}
-                - is_duplicate: {document.get('is_duplicate')}
-                - duplicate_group_id: {document.get('duplicate_group_id')}
-                - original_chunked_doc: {document.get('original_chunked_doc')}
-            """)
-            
-            duplicate_group_id = document.get('duplicate_group_id')
-            is_duplicate = document.get('is_duplicate')
-            chunk_status = document.get('chunk_status')
-            
-            potential_sources = []
-            
-            potential_sources.append(doc_id)
-            
-            if duplicate_group_id:
-                try:
-                    group_docs_query = """
-                        SELECT id, chunk_status, is_duplicate 
-                        FROM documents 
-                        WHERE duplicate_group_id = %s AND id != %s
-                    """
-                    group_docs = self.data_manager.execute_with_retry(
-                        group_docs_query, 
-                        (duplicate_group_id, doc_id),
-                        fetch=True
-                    )
-                    
-                    if group_docs:
-                        chunked_docs = [row[0] for row in group_docs if row[1] == 'Chunked']
-                        if chunked_docs:
-                            potential_sources.extend(chunked_docs)
-                            logger.info(f"Found {len(chunked_docs)} chunked documents in group: {chunked_docs}")
-                        else:
-                            other_docs = [row[0] for row in group_docs]
-                            potential_sources.extend(other_docs)
-                            logger.info(f"No chunked documents, add {len(other_docs)} other documents in the group")
-                except Exception as group_error:
-                    logger.error(f"Error while retrieving documents in group: {str(group_error)}")
-            
-            
-            found_chunks = None
-            source_used = None
-            
-            for source_id in potential_sources:
-                try:
-                    logger.info(f"Try to find chunks from source: {source_id}")
-                    
-                    query = {"where": {"original_id": source_id}}
-                    if limit and isinstance(limit, int) and limit > 0:
-                        query["limit"] = limit
-                        
-                    results = self.collection.get(**query)
-                    
-                    if results and results['ids'] and len(results['ids']) > 0:
-                        logger.info(f"Tìm thấy {len(results['ids'])} chunks từ nguồn {source_id}")
-                        found_chunks = results
-                        source_used = source_id
-                        break
-                    else:
-                        pattern_query = f"{source_id}_paragraph_"
-                        try:
-                            chunk_ids_query = f"""
-                                SELECT id FROM document_chunks 
-                                WHERE id LIKE '{pattern_query}%' OR doc_id = '{source_id}'
-                                LIMIT 100
-                            """
-                            
-                            chunk_ids_result = self.data_manager.execute_with_retry(chunk_ids_query, fetch=True)
-                            if chunk_ids_result and len(chunk_ids_result) > 0:
-                                chunk_ids = [row[0] for row in chunk_ids_result]
-                                logger.info(f"Found {len(chunk_ids)} chunk_ids from database with pattern {pattern_query}")
-                                
-                                if chunk_ids:
-                                    pattern_results = self.collection.get(ids=chunk_ids[:50]) 
-                                    if pattern_results and pattern_results['ids'] and len(pattern_results['ids']) > 0:
-                                        logger.info(f"Found {len(pattern_results['ids'])} chunks with pattern from source {source_id}")
-                                        found_chunks = pattern_results
-                                        source_used = source_id
-                                        break
-                        except Exception as pattern_error:
-                            logger.warning(f"Error searching by pattern from source {source_id}: {str(pattern_error)}")
-                        
-                except Exception as source_error:
-                    logger.warning(f"Error searching from source {source_id}: {str(source_error)}")
-            
-            if found_chunks:
-                return self._format_chunk_results(found_chunks, source_used)
-            
-         
-            if chunk_status == 'Chunked':
-                logger.warning(f"Document {doc_id} has status Chunked but no chunks found!")
-                
-                try:
-                    all_results = self.collection.get(limit=5)
-                    if all_results and all_results['ids']:
-                        logger.info(f"The system has at least {len(all_results['ids'])} chunks")
-                    else:
-                        logger.warning("No chunks found in the system!")
-                except Exception as all_error:
-                    logger.error(f"Error checking total chunks: {str(all_error)}")
-                    
-            return None
-
-        except Exception as e:
-            logger.error(traceback.format_exc())
-            return None
-
     def _format_chunk_results(self, results, source_id):
         """
         Format chunk results from Chroma for display and proper handling of disabled status
@@ -1358,12 +1276,10 @@ class DatabaseManager:
                 results['documents'],
                 results['metadatas']
             ):
-                # Ensure we properly preserve the is_enabled status
                 is_enabled = metadata.get('is_enabled', True)
                 if isinstance(is_enabled, str):
                     is_enabled = is_enabled.lower() == 'true'
                     
-                # Create a new metadata dictionary with the updated is_enabled value
                 updated_metadata = dict(metadata)
                 updated_metadata['is_enabled'] = bool(is_enabled)
                 updated_metadata['doc_id'] = source_id
@@ -1402,7 +1318,6 @@ class DatabaseManager:
             logger.error(f"Error getting chunk content: {str(e)}")
             return ""
     
-
     def update_chunk_failure_count(self, doc_id, increment = True):
         try:
             if increment:
@@ -1588,6 +1503,18 @@ class DatabaseManager:
     def update_document_status(self, doc_id: str, status_data: Dict[str, Any]):
         """Update document status with validation and schema checking"""
         try:
+            if not doc_id:
+                logger.error("Document ID is required for status update")
+                return False
+                
+            document_check = """
+                SELECT id FROM documents WHERE id = %s LIMIT 1
+            """
+            doc_exists = self.execute_with_retry(document_check, (doc_id,), fetch=True)
+            if not doc_exists:
+                logger.error(f"Cannot update status: Document {doc_id} does not exist")
+                return False
+                
             if 'chunk_status' in status_data:
                 valid_chunk_statuses = {
                     'Pending', 'Chunking', 'Chunked',
@@ -1610,6 +1537,15 @@ class DatabaseManager:
                 if status_data['conflict_status'] not in valid_conflict_statuses:
                     logger.error(f"Invalid conflict_status: {status_data['conflict_status']}")
                     status_data['conflict_status'] = 'No Conflict'
+
+            if 'conflict_analysis_status' in status_data:
+                valid_analysis_statuses = {
+                    'NotAnalyzed', 'Analyzing', 'Analyzed',
+                    'AnalysisFailed', 'AnalysisInvalidated'
+                }
+                if status_data['conflict_analysis_status'] not in valid_analysis_statuses:
+                    logger.error(f"Invalid conflict_analysis_status: {status_data['conflict_analysis_status']}")
+                    status_data['conflict_analysis_status'] = 'NotAnalyzed'
 
             if 'processing_status' in status_data:
                 valid_processing_statuses = {
@@ -1640,11 +1576,12 @@ class DatabaseManager:
                             status_data['has_conflicts'] = False
                 
                 if not isinstance(status_data['has_conflicts'], bool):
-                        logger.warning(f"Convert has_conflicts from {type(status_data['has_conflicts'])} to boolean")
-                        status_data['has_conflicts'] = bool(status_data['has_conflicts'])
+                    logger.warning(f"Convert has_conflicts from {type(status_data['has_conflicts'])} to boolean")
+                    status_data['has_conflicts'] = bool(status_data['has_conflicts'])
 
             try:
                 with self.get_connection() as conn:
+                    conn.autocommit = True  
                     with conn.cursor() as cur:
                         schema_query = """
                             SELECT column_name FROM information_schema.columns 
@@ -1688,10 +1625,10 @@ class DatabaseManager:
                 params.append(value)
 
             if not set_clauses:
-                logger.warning(f"Không có dữ liệu để cập nhật cho document {doc_id}")
+                logger.warning(f"No data to update for document {doc_id}")
                 return False
 
-            params.append(doc_id)
+            params.append(doc_id)  
 
             query = f"""
                 UPDATE documents 
@@ -1702,12 +1639,17 @@ class DatabaseManager:
             for attempt in range(3):
                 try:
                     with self.get_connection() as conn:
+                        conn.autocommit = False
                         with conn.cursor() as cur:
-                            cur.execute("SET session_replication_role = 'replica';")
-                            
                             cur.execute(query, params)
                             
-                            cur.execute("SET session_replication_role = 'origin';")
+                            cur.execute("SELECT id FROM documents WHERE id = %s", (doc_id,))
+                            result = cur.fetchone()
+                            
+                            if not result:
+                                conn.rollback()
+                                logger.error(f"Document {doc_id} not found after update attempt")
+                                return False
                             
                             conn.commit()
                             
@@ -1717,7 +1659,7 @@ class DatabaseManager:
                 except Exception as e:
                     if attempt < 2: 
                         logger.warning(f"Error updating {attempt+1} for document {doc_id}: {str(e)}")
-                        time.sleep(1) 
+                        time.sleep(1)
                     else:
                         logger.error(f"Error executing update for document {doc_id}: {str(e)}")
                         logger.error(traceback.format_exc())
@@ -1725,21 +1667,20 @@ class DatabaseManager:
                         try:
                             basic_update = """
                                 UPDATE documents
-                                SET conflict_analysis_status = 'AnalysisFailed',
-                                    modified_date = CURRENT_TIMESTAMP
+                                SET modified_date = CURRENT_TIMESTAMP
                                 WHERE id = %s
                             """
                             
                             with self.get_connection() as conn2:
+                                conn2.autocommit = True
                                 with conn2.cursor() as cur2:
                                     cur2.execute(basic_update, [doc_id])
-                                    conn2.commit()
-                                    logger.info(f"Updated failure status for document {doc_id}")
+                                    logger.info(f"Applied minimal update for document {doc_id}")
                                     return True
                         except Exception as basic_error:
                             logger.error(f"Failed to update even basic status: {str(basic_error)}")
                         
-                        raise
+                        return False
                         
             return False
                         
@@ -1748,6 +1689,7 @@ class DatabaseManager:
             logger.error(traceback.format_exc())
             return False
     
+
     def delete_document(self, doc_id: str, chroma_manager=None) -> bool:
         """
         Delete document and update related conflicting information
@@ -1758,7 +1700,6 @@ class DatabaseManager:
 
         Returns:
         bool: True if deletion was successful, False if there was an error
-
         """
         try:
             with self.get_connection() as conn:
@@ -1843,7 +1784,7 @@ class DatabaseManager:
                                                 }
                                         except json.JSONDecodeError:
                                             logger.warning(f"Could not parse JSON string conflict_info for document {remaining_doc_id}")
-         
+        
                         get_conflicts_query = """
                             SELECT DISTINCT conflict_id FROM chunk_conflicts 
                             WHERE doc_id = %s
@@ -1912,7 +1853,7 @@ class DatabaseManager:
                                     replacement_doc = remaining_docs[0][0]
                                     
                                 logger.info(f"Updating references for {len(docs_referencing_deleted)} documents from {doc_id} to {replacement_doc}")
-                         
+                        
                                 for ref_doc, _ in docs_referencing_deleted:
                                     update_ref_query = """
                                         UPDATE documents
@@ -1923,7 +1864,12 @@ class DatabaseManager:
                                     cur.execute(update_ref_query, (replacement_doc, ref_doc))
                             
                             if all_conflict_infos:
-                                merged_conflict_info = self._merge_conflict_infos(all_conflict_infos, deleted_conflict_ids)
+                                # Truyền chroma_manager cho _merge_conflict_infos
+                                merged_conflict_info = self._merge_conflict_infos(
+                                    all_conflict_infos, 
+                                    deleted_conflict_ids,
+                                    chroma_manager
+                                )
                                 
                                 if merged_conflict_info:
                                     for remaining_doc_id, _ in [(doc[0], doc[4]) for doc in remaining_docs]:
@@ -1952,11 +1898,6 @@ class DatabaseManager:
                             chroma_manager.delete_document_chunks(doc_id)
                         self.clean_conflict_references(doc_id, update_related_docs=True)
 
-                        try:
-                            pass
-                        except Exception as notify_error:
-                            logger.warning(f"Unable to send update notification: {str(notify_error)}")
-                        
                         conn.commit()
                         return True
                         
@@ -1973,17 +1914,19 @@ class DatabaseManager:
             logger.error(traceback.format_exc())
             return False
 
-    def _merge_conflict_infos(self, conflict_infos, deleted_conflict_ids=None):
+    def _merge_conflict_infos(self, conflict_infos, deleted_conflict_ids=None, chroma_manager=None):
         """
-        Merge conflicting information from multiple documents and remove deleted conflicts.
-        Filter out conflicts related to disabled chunks.
+        Merge conflict information from multiple documents and remove deleted conflicts.
+        Filter out conflicts involving disabled chunks.
+        Ensure both sides of internal conflicts are handled.
 
         Args:
-        conflict_infos (dict): Dictionary containing conflicting information from multiple documents
+        conflict_infos (dict): Dictionary containing conflict information from multiple documents
         deleted_conflict_ids (list): List of deleted conflict_ids
+        chroma_manager (ChromaManager, optional): ChromaManager object to check chunks
 
         Returns:
-        dict: Merged conflicting information
+        dict: Merged conflict information
         """
         try:
             if not conflict_infos:
@@ -1997,22 +1940,25 @@ class DatabaseManager:
             internal_conflict_keys = set()
             external_conflict_keys = set()
             
-            # Get all enabled chunks for all involved documents
+            # Sử dụng chroma_manager nếu được cung cấp, nếu không thì dùng _check_chunk_exists
             enabled_chunks = {}
-            for doc_id in conflict_infos.keys():
-                try:
-                    chunks = self.chroma_manager.get_chunks_by_document_id(doc_id)
-                    if chunks:
-                        doc_enabled_chunks = []
-                        for chunk in chunks:
-                            metadata = chunk.get('metadata', {})
-                            is_enabled = metadata.get('is_enabled', True)
-                            if is_enabled:
-                                doc_enabled_chunks.append(chunk['id'])
-                        enabled_chunks[doc_id] = set(doc_enabled_chunks)
-                except Exception as chunk_error:
-                    logger.error(f"Error getting chunks for document {doc_id}: {str(chunk_error)}")
-                    enabled_chunks[doc_id] = set()
+            if chroma_manager:
+                for doc_id in conflict_infos.keys():
+                    try:
+                        chunks = chroma_manager.get_chunks_by_document_id(doc_id)
+                        if chunks:
+                            doc_enabled_chunks = []
+                            for chunk in chunks:
+                                metadata = chunk.get('metadata', {})
+                                is_enabled = metadata.get('is_enabled', True)
+                                if is_enabled:
+                                    doc_enabled_chunks.append(chunk['id'])
+                            enabled_chunks[doc_id] = set(doc_enabled_chunks)
+                    except Exception as chunk_error:
+                        logger.error(f"Error getting chunks for document {doc_id}: {str(chunk_error)}")
+                        enabled_chunks[doc_id] = set()
+            
+            external_conflict_docs = set()
             
             for doc_id, conflict_data in conflict_infos.items():
                 conflict_info = conflict_data.get('conflict_info')
@@ -2025,12 +1971,12 @@ class DatabaseManager:
                         chunk_id = conflict['chunk_id']
                         
                         chunk_doc_id = chunk_id.split('_paragraph_')[0] if '_paragraph_' in chunk_id else None
-                        if chunk_doc_id and chunk_doc_id in enabled_chunks:
+                        
+                        if chroma_manager and chunk_doc_id and chunk_doc_id in enabled_chunks:
                             if chunk_id not in enabled_chunks[chunk_doc_id]:
                                 logger.info(f"Skipping content conflict for disabled chunk {chunk_id}")
                                 continue
-                        
-                        if not self._check_chunk_exists(chunk_id):
+                        elif not self._check_chunk_exists(chunk_id):
                             logger.info(f"Ignore content conflicts with non-existent chunk: {chunk_id}")
                             continue
                             
@@ -2047,17 +1993,17 @@ class DatabaseManager:
                         if chunk_ids and len(chunk_ids) > 1:
                             all_chunks_valid = True
                             for chunk_id in chunk_ids:
-                                if not self._check_chunk_exists(chunk_id):
-                                    all_chunks_valid = False
-                                    logger.info(f"Ignoring internal conflict because chunk does not exist: {chunk_id}")
-                                    break
-                                    
                                 chunk_doc_id = chunk_id.split('_paragraph_')[0] if '_paragraph_' in chunk_id else None
-                                if chunk_doc_id and chunk_doc_id in enabled_chunks:
+                                
+                                if chroma_manager and chunk_doc_id and chunk_doc_id in enabled_chunks:
                                     if chunk_id not in enabled_chunks[chunk_doc_id]:
                                         all_chunks_valid = False
                                         logger.info(f"Skipping internal conflict because chunk {chunk_id} is disabled")
                                         break
+                                elif not self._check_chunk_exists(chunk_id):
+                                    all_chunks_valid = False
+                                    logger.info(f"Ignoring internal conflict because chunk does not exist: {chunk_id}")
+                                    break
                                     
                             if not all_chunks_valid:
                                 continue
@@ -2074,21 +2020,28 @@ class DatabaseManager:
                         chunk_ids = conflict['chunk_ids']
                         if chunk_ids and len(chunk_ids) > 1:
                             all_chunks_valid = True
+                            involved_docs = set()
+                            
                             for chunk_id in chunk_ids:
-                                if not self._check_chunk_exists(chunk_id):
-                                    all_chunks_valid = False
-                                    logger.info(f"Ignoring external conflict because chunk does not exist: {chunk_id}")
-                                    break
-                                    
                                 chunk_doc_id = chunk_id.split('_paragraph_')[0] if '_paragraph_' in chunk_id else None
-                                if chunk_doc_id and chunk_doc_id in enabled_chunks:
+                                
+                                if chunk_doc_id:
+                                    involved_docs.add(chunk_doc_id)
+                                
+                                if chroma_manager and chunk_doc_id and chunk_doc_id in enabled_chunks:
                                     if chunk_id not in enabled_chunks[chunk_doc_id]:
                                         all_chunks_valid = False
                                         logger.info(f"Skipping external conflict because chunk {chunk_id} is disabled")
                                         break
+                                elif not self._check_chunk_exists(chunk_id):
+                                    all_chunks_valid = False
+                                    logger.info(f"Ignoring external conflict because chunk does not exist: {chunk_id}")
+                                    break
                                     
                             if not all_chunks_valid:
                                 continue
+                                
+                            external_conflict_docs.update(involved_docs)
                                 
                             conflict_key = '_'.join(sorted(chunk_ids))
                             
@@ -2099,6 +2052,10 @@ class DatabaseManager:
             
             has_conflicts = bool(all_content_conflicts or all_internal_conflicts or all_external_conflicts)
             
+            external_conflict_metadata = None
+            if external_conflict_docs:
+                external_conflict_metadata = list(external_conflict_docs)
+            
             merged_info = {
                 "has_conflicts": has_conflicts,
                 "content_conflicts": all_content_conflicts,
@@ -2107,17 +2064,25 @@ class DatabaseManager:
                 "last_updated": datetime.now().isoformat()
             }
             
-            return {
+            if external_conflict_metadata:
+                merged_info["involved_documents"] = external_conflict_metadata
+            
+            result = {
                 "info": merged_info,
                 "has_conflicts": has_conflicts,
                 "status": "Pending Review" if has_conflicts else "No Conflict"
             }
             
+            if external_conflict_docs:
+                result["external_docs"] = list(external_conflict_docs)
+                
+            return result
+            
         except Exception as e:
             logger.error(f"Error merging conflicting information: {str(e)}")
             logger.error(traceback.format_exc())
             return None
-    
+       
     def clean_conflict_references(self, deleted_doc_id, update_related_docs=True):
         """
         Clean up references to deleted documents in conflicts
@@ -2234,14 +2199,15 @@ class DatabaseManager:
             return updated_count
             
         except Exception as e:
-            logger.error(f"Lỗi khi dọn dẹp tham chiếu mâu thuẫn: {str(e)}")
+            logger.error(f"Error cleaning up conflicting references: {str(e)}")
             logger.error(traceback.format_exc())
             return 0
       
+    
     def submit_document(self, doc_data, unit):
-        """Submit a new document with improved error handling"""
         try:
             doc_id = f"doc_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            current_timestamp = datetime.now()
             logger.info(f"Generated document ID: {doc_id}")
 
             if not doc_data.get('content'):
@@ -2252,10 +2218,10 @@ class DatabaseManager:
                     id, content, categories, tags,
                     start_date, end_date, unit, sender,
                     processing_status, scan_status, chunk_status,
-                    approval_status, is_valid
+                    approval_status, is_valid, created_date
                 ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                ) RETURNING id;
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                ) RETURNING id, created_date;
             """
             
             params = (
@@ -2271,13 +2237,15 @@ class DatabaseManager:
                 'Pending',    # initial scan_status 
                 'Pending',    # initial chunk_status
                 'Pending',    # initial approval_status
-                doc_data.get('is_valid', True)
+                doc_data.get('is_valid', True),
+                current_timestamp 
             )
 
             result = self.execute_with_retry(query, params, fetch=True)
             if result and result[0]:
                 inserted_id = result[0][0]
-                logger.info(f"Document {inserted_id} inserted successfully")
+                created_date = result[0][1] if len(result[0]) > 1 else None
+                logger.info(f"Document {inserted_id} inserted successfully with created_date: {created_date}")
                 return inserted_id
             else:
                 logger.error("No ID returned from insert")

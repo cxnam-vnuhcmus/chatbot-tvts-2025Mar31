@@ -224,7 +224,7 @@ def handle_document():
 def process_document(doc_id, duplicate_info=None):
     """
     Process a document by breaking it into chunks, analyzing for conflicts, and storing the result.
-    Sử dụng cơ chế bypass để tránh lỗi chuyển trạng thái.
+    Uses transaction management to ensure data consistency.
 
     Args:
         doc_id (str): The ID of the document to process.
@@ -236,84 +236,107 @@ def process_document(doc_id, duplicate_info=None):
     try:
         document = data_manager.get_document_by_id(doc_id)
         if not document:
-            raise Exception(f"Document {doc_id} not found")
+            logger.error(f"Document {doc_id} not found")
+            return False
 
         current_status = document.get('processing_status')
         current_chunk_status = document.get('chunk_status')
         
-        with data_manager.get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("""
-                    BEGIN;
-                    SET session_replication_role = 'replica';
-                    
-                    UPDATE documents 
-                    SET processing_status = 'Processing',
-                        chunk_status = 'Processing',
-                        modified_date = CURRENT_TIMESTAMP 
-                    WHERE id = %s;
-                    
-                    SET session_replication_role = 'origin';
-                    COMMIT;
-                """, (doc_id,))
-                conn.commit()
-              
+        update_result = data_manager.update_document_status(doc_id, {
+            'processing_status': 'Processing',
+            'chunk_status': 'Processing',
+            'modified_date': datetime.now().isoformat()
+        })
+        
+        if not update_result:
+            logger.error(f"Failed to update document status for {doc_id}")
+            return False
+        
+        document = data_manager.get_document_by_id(doc_id)
+        if not document:
+            logger.error(f"Document {doc_id} not found after status update")
+            return False
+
         content = document.get('content')
         if not content:
-            raise Exception("No content to process")
+            logger.error(f"No content to process for document {doc_id}")
+            return False
 
         processor = GPTProcessor()
 
-        with data_manager.get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("""
-                    BEGIN;
-                    SET session_replication_role = 'replica';
-                    
-                    UPDATE documents 
-                    SET chunk_status = 'Chunking',
-                        modified_date = CURRENT_TIMESTAMP 
-                    WHERE id = %s;
-                    
-                    SET session_replication_role = 'origin';
-                    COMMIT;
-                """, (doc_id,))
-                conn.commit()
+        update_result = data_manager.update_document_status(doc_id, {
+            'chunk_status': 'Chunking',
+            'modified_date': datetime.now().isoformat()
+        })
+        
+        if not update_result:
+            logger.error(f"Failed to update chunking status for {doc_id}")
+            return False
 
-        chunks_data = processor.process_content(content, doc_id)
+        try:
+            chunks_data = processor.process_content(content, doc_id)
+        except Exception as proc_error:
+            logger.error(f"Error processing content for document {doc_id}: {str(proc_error)}")
+            logger.error(traceback.format_exc())
+            
+            data_manager.update_document_status(doc_id, {
+                'processing_status': 'Failed',
+                'chunk_status': 'ChunkingFailed',
+                'error_message': f"Content processing error: {str(proc_error)}"
+            })
+            
+            notify_scanner(doc_id, 'failed', str(proc_error))
+            return False
 
-        success = chroma_manager.add_chunks(
-            doc_id,
-            chunks_data,
-            document.get('unit', ''),
-            duplicate_info=duplicate_info
-        )
+        try:
+            success = chroma_manager.add_chunks(
+                doc_id,
+                chunks_data,
+                document.get('unit', ''),
+                duplicate_info=duplicate_info
+            )
+        except Exception as chunks_error:
+            logger.error(f"Error adding chunks for document {doc_id}: {str(chunks_error)}")
+            logger.error(traceback.format_exc())
+            
+            data_manager.update_document_status(doc_id, {
+                'processing_status': 'Failed',
+                'chunk_status': 'ChunkingFailed',
+                'error_message': f"Chunk storage error: {str(chunks_error)}"
+            })
+            
+            notify_scanner(doc_id, 'failed', str(chunks_error))
+            return False
 
         if success:
-            with data_manager.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("""
-                        BEGIN;
-                        SET session_replication_role = 'replica';
-                        
-                        UPDATE documents 
-                        SET chunk_status = 'Chunked',
-                            processing_status = 'Processed',
-                            modified_date = CURRENT_TIMESTAMP 
-                        WHERE id = %s;
-                        
-                        SET session_replication_role = 'origin';
-                        COMMIT;
-                    """, (doc_id, ))
-                    conn.commit()
+            update_success = data_manager.update_document_status(doc_id, {
+                'chunk_status': 'Chunked',
+                'processing_status': 'Processed',
+                'modified_date': datetime.now().isoformat()
+            })
+            
+            if not update_success:
+                logger.error(f"Failed to update document to Chunked status: {doc_id}")
+                return False
 
-            chunks = chroma_manager.get_chunks_by_document_id(doc_id)
-            if chunks:
+            document = data_manager.get_document_by_id(doc_id)
+            if not document:
+                logger.error(f"Document {doc_id} not found after successful chunk processing")
+                return False
+
+            try:
+                chunks = chroma_manager.get_chunks_by_document_id(doc_id)
+                if not chunks:
+                    logger.warning(f"No chunks found for document {doc_id} after successful processing")
+                    notify_scanner(doc_id, 'success')
+                    return True
+                
                 conflict_result = conflict_manager.analyze_document(doc_id)
 
                 status_update = {
                     'has_conflicts': conflict_result['has_conflicts'],
-                    'conflict_info': json.dumps(conflict_result) if conflict_result['has_conflicts'] else None
+                    'conflict_info': json.dumps(conflict_result) if conflict_result['has_conflicts'] else None,
+                    'modified_date': datetime.now().isoformat()
                 }
 
                 if duplicate_info:
@@ -322,32 +345,39 @@ def process_document(doc_id, duplicate_info=None):
                         'duplicate_group_id': duplicate_info.get('duplicate_group_id')
                     })
 
-                update_document_status_direct(doc_id, status_update)
-                notify_scanner(doc_id, 'success')
-
-                return True
-            else:
-                raise Exception("Failed to retrieve chunks for analysis")
-
-        update_document_status_direct(doc_id, {
-            'processing_status': 'Failed',
-            'chunk_status': 'ChunkingFailed',
-            'error_message': "Failed to store chunks in ChromaDB"
-        })
-        notify_scanner(doc_id, 'failed', "Failed to store chunks in ChromaDB")
-        return False
+                data_manager.update_document_status(doc_id, status_update)
+                
+            except Exception as analysis_error:
+                logger.error(f"Error during conflict analysis for document {doc_id}: {str(analysis_error)}")
+                logger.error(traceback.format_exc())
+            
+            notify_scanner(doc_id, 'success')
+            return True
+        else:
+            data_manager.update_document_status(doc_id, {
+                'processing_status': 'Failed',
+                'chunk_status': 'ChunkingFailed',
+                'error_message': "Failed to store chunks in ChromaDB"
+            })
+            
+            notify_scanner(doc_id, 'failed', "Failed to store chunks in ChromaDB")
+            return False
 
     except Exception as e:
         logger.error(f"Error processing document {doc_id}: {str(e)}")
-        update_document_status_direct(doc_id, {
-            'processing_status': 'Failed',
-            'chunk_status': 'ChunkingFailed',
-            'error_message': str(e)
-        })
+        logger.error(traceback.format_exc())
+        
+        try:
+            data_manager.update_document_status(doc_id, {
+                'processing_status': 'Failed',
+                'chunk_status': 'ChunkingFailed',
+                'error_message': str(e)
+            })
+        except Exception as update_error:
+            logger.error(f"Failed to update error status for document {doc_id}: {str(update_error)}")
 
         notify_scanner(doc_id, 'failed', str(e))
         return False
-
 
 def update_document_status_direct(doc_id, status_data):
     """

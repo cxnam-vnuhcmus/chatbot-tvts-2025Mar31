@@ -37,6 +37,56 @@ worker_pool = ThreadPoolExecutor(max_workers = 5)
 KMS_PROCESSOR_API = os.getenv('KMS_PROCESSOR_API')
 
 
+# def analyze_document_similarity(current_doc_id, current_content):
+#     """
+#     Analyzes the similarity between a given document and all other documents in the system.
+
+#     Args:
+#         current_doc_id (str): The unique ID of the document being analyzed.
+#         current_content (str): The content of the current document to be compared.
+
+#     Returns:
+#         list: A sorted list of dictionaries representing similar documents. Each dictionary contains:
+#             - id (str): The unique ID of the similar document.
+#             - similarity (float): The similarity score (range: 0.0 to 1.0).
+#             - content (str): The content of the similar document.
+#             - created_date (str): The creation date of the similar document.
+
+#     Raises:
+#         Exception: If there is an error during the similarity analysis process.
+
+#     """
+#     try:
+#         similar_docs = []
+#         processed_current = preprocessing(current_content)
+#         all_documents = data_manager.get_all_documents()
+
+#         for _, doc in all_documents.iterrows():
+#             if doc['id'] != current_doc_id:
+#                 try:
+#                     processed_doc = preprocessing(doc['content'])
+#                     similarity = ratio(processed_current, processed_doc)
+    
+#                     if similarity > 0.995:
+#                         similar_doc = {
+#                             'id': str(doc['id']),
+#                             'similarity': float(similarity),
+#                             'content': str(doc['content']),
+#                             'created_date': doc['created_date']
+#                         }
+#                         similar_docs.append(similar_doc)
+                        
+#                 except Exception as e:
+#                     logger.error(f"Error comparing with document {doc['id']}: {str(e)}")
+#                     continue
+
+#         similar_docs.sort(key=lambda x: x['similarity'], reverse=True)
+#         return similar_docs
+
+#     except Exception as e:
+#         logger.error(f"Error analyzing similarity: {str(e)}")
+#         raise
+
 def analyze_document_similarity(current_doc_id, current_content):
     """
     Analyzes the similarity between a given document and all other documents in the system.
@@ -61,13 +111,38 @@ def analyze_document_similarity(current_doc_id, current_content):
         processed_current = preprocessing(current_content)
         all_documents = data_manager.get_all_documents()
 
+        def extract_numbers(text):
+            import re
+            return re.findall(r'\b\d+[.,]?\d*\b', text)
+        
+        def has_numeric_differences(text1, text2):
+            numbers1 = extract_numbers(text1)
+            numbers2 = extract_numbers(text2)
+            
+            if len(numbers1) != len(numbers2):
+                return True
+                
+            for n1, n2 in zip(sorted(numbers1), sorted(numbers2)):
+                if n1 != n2:
+                    return True
+                    
+            return False
+
+        current_numbers = extract_numbers(current_content)
+
         for _, doc in all_documents.iterrows():
             if doc['id'] != current_doc_id:
                 try:
                     processed_doc = preprocessing(doc['content'])
                     similarity = ratio(processed_current, processed_doc)
+                    
+                    if similarity > 0.99:
+                        doc_numbers = extract_numbers(doc['content'])
+                        
+                        if has_numeric_differences(current_content, doc['content']):
+                            similarity = 0.97
     
-                    if similarity > 0.995:
+                    if similarity > 0.995:  
                         similar_doc = {
                             'id': str(doc['id']),
                             'similarity': float(similarity),
@@ -271,7 +346,8 @@ def batch_analyze_conflicts():
                             })
                 
             except Exception as e:
-                logger.error(f"Error analyzing conflicts for document {doc_id}: {str(e)}")
+                error_msg = str(e).replace('%', '%%')
+                logger.error(f"Error analyzing conflicts for document {doc_id}: {error_msg}")
                 logger.error(traceback.format_exc())
                 
                 failed_docs.append({
@@ -466,7 +542,6 @@ def rescan_null_status():
                             """)
                             conn.commit()
                             
-                            # Gọi function
                             cursor.execute("SELECT prepare_for_rescan(%s)", (doc_id,))
                             result = cursor.fetchone()[0]
                             conn.commit()
@@ -1047,9 +1122,9 @@ def scan_worker():
                             COMMIT;
                         """, (doc_id,))
                         conn.commit()
-                        logger.error(f"Worker {worker_id}: Error updating Scanning status for document {doc_id}: {str(status_error)}")
-            except Exception as status_error:
-                logger.error(f"Worker {worker_id}: Error updating Scanning status for document {doc_id}: {str(status_error)}")
+                        logger.info(f"Worker {worker_id}: Updated document {doc_id} status to Scanning")
+            except Exception as e:
+                logger.error(f"Worker {worker_id}: Error updating Scanning status for document {doc_id}: {str(e)}")
 
             try:
                 scan_document(doc_id)
@@ -1080,6 +1155,7 @@ def scan_worker():
                 scan_queue.task_done()
             
             time.sleep(2)
+
 
 @app.route('/scan_doc', methods=['POST'])
 def scan_doc():

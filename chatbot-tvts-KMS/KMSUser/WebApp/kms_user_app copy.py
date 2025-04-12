@@ -9,7 +9,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))) 
 from common.data_manager import DatabaseManager
 from common.data_processor import DataProcessor
-from common.utils import remove_html, format_date
+from common.utils import remove_html
 import requests
 import logging
 from concurrent.futures import ThreadPoolExecutor
@@ -232,7 +232,7 @@ class KMSUser(param.Parameterized):
         try:
             previous_count = len(self._last_documents) if hasattr(self, '_last_documents') else 0
             current_count = len(documents)
-            
+
             temp_container = pn.Column(
                 sizing_mode='stretch_width', 
                 styles={
@@ -979,10 +979,12 @@ class KMSUser(param.Parameterized):
             
         status_text, status_color = status_map[status]
 
-        created_date = format_date(doc['created_date'])
+        created_date = (doc['created_date'].strftime('%Y-%m-%d %H:%M:%S') 
+                    if pd.notnull(doc['created_date']) else "N/A")
         approver = doc.get('approver', '') or "Chưa có"
         approval_date = doc.get('approval_date')
-        approval_date_text = format_date(approval_date, "Chưa phê duyệt")
+        approval_date_text = (approval_date.strftime('%Y-%m-%d %H:%M:%S') 
+                            if pd.notnull(approval_date) else "Chưa phê duyệt")
 
         is_duplicate = doc.get('is_duplicate', False)
         similarity_score = doc.get('similarity_score', 0)
@@ -993,14 +995,14 @@ class KMSUser(param.Parameterized):
         if is_duplicate and duplicate_group_id:
             if original_doc_id:
                 duplicate_info = f"""
-                🔄 **Thông tin trùng lặp:**
+                🔄 **Thông tin trùng lắp:**
                 - Thuộc nhóm: {duplicate_group_id}
                 - Tài liệu gốc: {original_doc_id}
                 - Độ tương đồng: {similarity_score * 100:.1f}%
                 """
             else:
                 duplicate_info = f"""
-                🔄 **Thông tin trùng lặp:**
+                🔄 **Thông tin trùng lắp:**
                 - Thuộc nhóm: {duplicate_group_id}
                 - Độ tương đồng: {similarity_score * 100:.1f}%
                 """

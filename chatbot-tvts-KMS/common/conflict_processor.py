@@ -11,6 +11,7 @@ import json
 from datetime import datetime
 import logging
 import os
+import traceback
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -182,11 +183,15 @@ class ConflictProcessor:
                     })
 
             except Exception as analysis_error:
-                logger.error(f"Error analyzing conflicts: {str(analysis_error)}")
+                error_message = str(analysis_error)
+                # Escape % characters to avoid format specifier issues
+                error_message = error_message.replace('%', '%%')
+                logger.error(f"Error analyzing conflicts: {error_message}")
+                logger.error(traceback.format_exc())
                 if callback:
                     callback("conflict_check", {
                         "status": "error",
-                        "message": f"Lỗi phân tích xung đột: {str(analysis_error)}"
+                        "message": f"Lỗi phân tích xung đột: {error_message}"
                     })
 
         except Exception as e:

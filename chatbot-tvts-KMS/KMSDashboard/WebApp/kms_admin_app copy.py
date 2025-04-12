@@ -9,10 +9,11 @@ import traceback
 import logging
 import pandas as pd
 import time
-from functools import wraps
+import threading
 import sys
 import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))  
+from common.models import ConflictResult
 from common.data_manager import DatabaseManager
 from common.data_processor import DataProcessor
 from common.chroma_manager import ChromaManager
@@ -48,13 +49,6 @@ class KMSAdmin(param.Parameterized):
         self._is_updating = False
         self._last_update = datetime.now() - timedelta(seconds=30)  
         
-        self._user_is_interacting = False  
-        self._pause_auto_updates = False  
-        self._disable_selection_change = False 
-        self._currently_viewing_tab = None  
-        self._last_chunks_load_time = 0     
-        self._last_conflict_load_time = 0 
-    
         self._init_cache()
         
         self.data_manager = DatabaseManager()
@@ -116,7 +110,9 @@ class KMSAdmin(param.Parameterized):
         self.loading_indicator = pn.indicators.LoadingSpinner(value=False, size=20)
         self.chunks_loading = pn.indicators.LoadingSpinner(value=False, size=20)
         self.save_indicator = pn.indicators.LoadingSpinner(value=False, size=20)
-                
+        
+        
+        
         self.chunk_info_container = pn.Column(
             pn.pane.Markdown("", styles={'color': 'blue'}),
             visible=False,
@@ -286,24 +282,6 @@ class KMSAdmin(param.Parameterized):
     
     def show_notification(self, message, alert_type="info", duration=3000):
         try:
-            current_time = time.time()
-            notification_key = f"{alert_type}:{message}"
-            
-            if hasattr(self, '_last_notifications'):
-                if notification_key in self._last_notifications:
-                    if current_time - self._last_notifications[notification_key] < 2:
-                        return
-            else:
-                self._last_notifications = {}
-                
-            self._last_notifications[notification_key] = current_time
-            
-            if len(self._last_notifications) > 20:
-                oldest_keys = sorted(self._last_notifications.keys(), 
-                                key=lambda k: self._last_notifications[k])[:10]
-                for key in oldest_keys:
-                    del self._last_notifications[key]
-            
             if pn.state.notifications is not None:
                 if alert_type == "success":
                     pn.state.notifications.success(message, duration=duration)
@@ -336,62 +314,46 @@ class KMSAdmin(param.Parameterized):
     def _init_cache(self):
         try:
             self._document_cache = {}
-            self._chunks_cache = {}
-            self._cache_size = 30 
-            self._cache_access_time = {}
-            self._cache_priority = {}  
+            self._chunks_cache = {}  
+            self._cache_size = 10 
+            self._cache_access_time = {}  
             
-            self._computation_cache = {}
-            
-            self._last_loaded_chunks = None
+            self._last_loaded_chunks = None  
             self._is_loading_chunks = False
             self._is_updating = False
             self._last_chunk_load_time = 0
-            self._chunk_load_debounce = 1000
+            self._chunk_load_debounce = 1000 
             self._last_update = datetime.now()
             
-            logger.info("Cache system initialized with size 30")
+            logger.info("Cache system initialized")
         except Exception as e:
             logger.error(f"Error initializing cache: {str(e)}")
             self._chunks_cache = {}
             self._document_cache = {}
-
-    def _update_cache(self, key, value, priority=1):
+    
+    def _update_cache(self, key, value):
         """
-        Update cache với cơ chế LRU và ưu tiên
-        
+        Update cache with LRU (Least Recently Used) mechanism
+
         Args:
-            key (str): Cache key
-            value (any): Giá trị cần cache
-            priority (int): Mức ưu tiên (1-5, càng cao càng ưu tiên)
+        key (str): Cache key
+        value (any): Value to cache
         """
         try:
             self._chunks_cache[key] = value
             self._cache_access_time[key] = time.time()
-            self._cache_priority[key] = priority
             
             if len(self._chunks_cache) > self._cache_size:
-                cache_scores = {}
-                for k in self._chunks_cache.keys():
-                    access_time = self._cache_access_time.get(k, 0)
-                    priority = self._cache_priority.get(k, 1)
-                    cache_scores[k] = access_time + (100 * priority)
-                
-                if cache_scores:
-                    min_key = min(cache_scores, key=cache_scores.get)
-                    if min_key in self._chunks_cache:
-                        del self._chunks_cache[min_key]
-                    if min_key in self._cache_access_time:
-                        del self._cache_access_time[min_key]
-                    if min_key in self._cache_priority:
-                        del self._cache_priority[min_key]
-                        
-                    logger.info(f"Removed cache item with lowest score: {min_key}")
+                oldest_key = min(self._cache_access_time, key=self._cache_access_time.get)
+                if oldest_key in self._chunks_cache:
+                    del self._chunks_cache[oldest_key]
+                if oldest_key in self._cache_access_time:
+                    del self._cache_access_time[oldest_key]
+                    
+                logger.info(f"Removed oldest cache item: {oldest_key}")
         except Exception as e:
             logger.error(f"Error updating cache: {str(e)}")
-        
-        
-   
+    
     def _get_from_cache(self, key):
         """
         Get data from cache and update access time
@@ -429,47 +391,67 @@ class KMSAdmin(param.Parameterized):
         except Exception as e:
             logger.error(traceback.format_exc())
 
-    
-    def setup_auto_update(self, period=7000): 
+    def setup_auto_update(self, period=5000):  
         try:
             self._last_update = datetime.now() - timedelta(seconds=10)  
             self._is_updating = False
             
-            for callback_name in ['update_callback', 'chunks_callback', 'reanalysis_check_callback']:
-                if hasattr(self, callback_name) and getattr(self, callback_name) is not None:
-                    try:
-                        getattr(self, callback_name).stop()
-                    except Exception:
-                        pass
-            
-            def combined_status_check():
-                if hasattr(self, 'tabs') and self.tabs.visible:
-                    active_tab = self.tabs.active if hasattr(self, 'tabs') else None
+            if hasattr(self, 'update_callback') and self.update_callback is not None:
+                try:
+                    self.update_callback.stop()
+                except Exception:
+                    pass
                     
-                    current_time = time.time()
-                    last_table_update = getattr(self, '_last_table_update', 0)
-                    if current_time - last_table_update > 10:  
-                        self._last_table_update = current_time
-                        self._throttled_update()
+            if hasattr(self, 'chunks_callback') and self.chunks_callback is not None:
+                try:
+                    self.chunks_callback.stop()
+                except Exception:
+                    pass
                     
-                    if active_tab == 1 and self.current_doc_id:
-                        self.check_chunk_status(force_check=False)
+            if hasattr(self, 'reanalysis_check_callback') and self.reanalysis_check_callback is not None:
+                try:
+                    self.reanalysis_check_callback.stop()
+                except Exception:
+                    pass
                     
-                    if active_tab == 3 and self.current_doc_id:
-                        self.check_reanalysis_needed()
+            try:
+                self.chunks_callback = pn.state.add_periodic_callback(
+                    self.check_chunk_status,
+                    5000 
+                )
+            except Exception as e:
+                try:
+                    if hasattr(pn.state, 'onload'):
+                        pn.state.onload(lambda: pn.state.add_periodic_callback(self.check_chunk_status, 5000))
+                except:
+                    pass
             
             try:
-                self.status_check_callback = pn.state.add_periodic_callback(
-                    combined_status_check,
+                self.reanalysis_check_callback = pn.state.add_periodic_callback(
+                    self.check_reanalysis_needed,
+                    10000 
+                )
+            except Exception as e:
+                logger.error(f"Could not set reanalysis check callback: {str(e)}")
+                try:
+                    if hasattr(pn.state, 'onload'):
+                        pn.state.onload(lambda: pn.state.add_periodic_callback(self.check_reanalysis_needed, 10000))
+                except:
+                    pass
+            
+            try:
+                self.update_callback = pn.state.add_periodic_callback(
+                    self._throttled_update,
                     period  
                 )
             except Exception as e:
-                logger.error(f"Could not set combined status callback: {str(e)}")
+                logger.error(f"Could not set update callback: {str(e)}")
                 
+            self._throttled_update()
+            
         except Exception as e:
             logger.error(f"Error setting auto update: {str(e)}")
             logger.error(traceback.format_exc())
-    
     
     def init_conflict_components(self):
         try:
@@ -507,20 +489,6 @@ class KMSAdmin(param.Parameterized):
                 sizing_mode='stretch_width'
             )
             
-            self.fix_conflicts_button = pn.widgets.Button(
-                name="Phân tích mâu thuẫn", 
-                button_type="primary",
-                button_style="solid",
-                width=180,
-                height=40,
-                styles={
-                    'font-weight': 'bold',
-                    'font-size': '14px',
-                    'box-shadow': '0 2px 4px rgba(0,0,0,0.1)'
-                }
-            )
-            self.fix_conflicts_button.on_click(lambda event: self.request_conflict_analysis(self.current_doc_id))
-            
             deepseek_status = pn.pane.Markdown(
                 "**Model phân tích:** OpenAI GPT (online)",
                 styles={
@@ -544,10 +512,7 @@ class KMSAdmin(param.Parameterized):
                         'color': '#2c5282',
                         'font-size': '18px',
                         'margin-bottom': '5px'
-                    }),
-                    pn.Spacer(width=20),
-                    self.fix_conflicts_button,
-                    align='center'
+                    })
                 ),
                 self.conflict_summary,
                 model_row,
@@ -564,59 +529,25 @@ class KMSAdmin(param.Parameterized):
         try:
             current_time = datetime.now()
             
-            if (hasattr(self, '_user_is_interacting') and self._user_is_interacting) or \
-            (hasattr(self, '_pause_auto_updates') and self._pause_auto_updates):
-                return
-                
             if hasattr(self, '_is_updating') and self._is_updating:
                 return
                 
             elapsed_seconds = (current_time - self._last_update).total_seconds()
-            if elapsed_seconds < 3:  
+            if elapsed_seconds < 2:  
                 logger.info(f"Chỉ mới {elapsed_seconds}s từ lần cập nhật cuối, bỏ qua")
                 return
                 
-            self._is_updating = True
+            self.update_table()
             
-            try:
-                if self.current_doc_id and hasattr(self, 'tabs') and self.tabs.visible:
-                    self._update_current_document_status()
-                else:
-                    self.update_table()
-            finally:
-                self._is_updating = False
-                self._last_update = datetime.now()
-                
         except Exception as e:
             self._is_updating = False
-            logger.error(f"Lỗi trong _throttled_update: {str(e)}")
             logger.error(traceback.format_exc())
-    
-    def _update_current_document_status(self):
-        try:
-            if not self.current_doc_id:
-                return
-                
-            document = self.data_manager.get_document_by_id(self.current_doc_id)
-            if not document:
-                return
-                
-            for idx, row in self.all_data.iterrows():
-                if row['id'] == self.current_doc_id:
-                    if 'approval_status' in document:
-                        self.all_data.at[idx, 'approval_status'] = document['approval_status']
-                        
-                    if 'conflict_status' in document and 'conflict_status' in self.all_data.columns:
-                        self.all_data.at[idx, 'conflict_status'] = document['conflict_status']
-                        
-                    if self.data_table.selection and self.data_table.selection[0] == idx:
-                        self.update_button_states(self.all_data.iloc[idx])
-                        
-                    break
-                    
-        except Exception as e:
-            logger.error(f"Lỗi cập nhật trạng thái tài liệu: {str(e)}")
-      
+            
+            try:
+                pn.state.add_periodic_callback(self.update_table, 5000, count=1)
+            except Exception:
+                pass
+            
     def create_buttons(self):
         button_width = 80
         
@@ -740,7 +671,7 @@ class KMSAdmin(param.Parameterized):
             'is_duplicate': {'type': 'input', 'func': 'like', 'placeholder': ''},
             'conflict_status': {'type': 'input', 'func': 'like', 'placeholder': ''},
         }
-        
+
         options = ["All", "Pending", "Approved", "Rejected"]
         logger.info(f"Using fixed status options: {options}")
         
@@ -748,7 +679,7 @@ class KMSAdmin(param.Parameterized):
             options=options,
             value="All",
             name="Trạng thái",
-            width=120,  
+            width=120
         )
         
         if self.all_data is None or len(self.all_data.columns) == 0:
@@ -802,26 +733,24 @@ class KMSAdmin(param.Parameterized):
         #     column_titles.append(self.column_titles.get(col, col))
         
         self.data_table = pn.widgets.Tabulator(
-            value=pd.DataFrame(), 
-            page_size=20, 
-            pagination='remote',
+            value=filtered_data,
+            pagination='local',
+            page_size=10, 
+            selectable=True,
             header_filters=header_filters,
-            height=400,
             min_width=1200,
-            widths=self.column_widths, 
             disabled=False,
             sizing_mode="stretch_width",
+            styles={'height': '80vh'},
             show_index=False,
-            text_align='left',
             theme='bootstrap5',
-            theme_classes=['table-striped', 'table-bordered', 'table-hover'],
+            theme_classes=['table-striped', 'table-bordered'],
             selection=[],
             configuration={
                 'layout': 'fitColumns',  
                 'columns': column_width_configs
             }
         )
-
         self.doc_type_selector.param.watch(self.filter_by_status, 'value')
         self.data_table.on_click(self.on_row_click)
         self.data_table.param.watch(self.on_selection_change, 'selection')
@@ -938,25 +867,6 @@ class KMSAdmin(param.Parameterized):
                 font-size: 16px;
                 font-weight: bold;
             }
-            /* Cải thiện hiệu ứng hover và click cho bảng */
-            .tabulator-row {
-                transition: background-color 0.2s ease-in-out, transform 0.1s;
-            }
-            .tabulator-row:hover {
-                background-color: #EBF8FF !important;
-                cursor: pointer;
-            }
-            .tabulator-row.tabulator-selected {
-                background-color: #BEE3F8 !important;
-                transform: scale(1.005);
-            }
-            .tabulator-row.tabulator-selected:hover {
-                background-color: #90CDF4 !important;
-            }
-            /* Tăng tốc độ phản hồi UI */
-            * {
-                transition-duration: 0.2s;
-            }
         </style>
         """
         
@@ -1014,7 +924,7 @@ class KMSAdmin(param.Parameterized):
             if getattr(self, '_is_loading_chunks', False) or getattr(self, '_is_loading_tab', False):
                 return
                     
-            if event.new == getattr(self, '_last_active_tab', None):
+            if event.new == self._last_active_tab:
                 return
                     
             self._last_active_tab = event.new
@@ -1024,50 +934,25 @@ class KMSAdmin(param.Parameterized):
                     
             self._is_loading_tab = True
             
-            if event.new in [1, 3]: 
-                tab_containers = {
-                    1: self.chunks_container if hasattr(self, 'chunks_container') else None,
-                    3: self.conflicts_container if hasattr(self, 'conflicts_container') else None
-                }
-                
-                current_container = tab_containers.get(event.new)
-                if current_container:
-                    current_container.clear()
-                    current_container.append(
-                        pn.Column(
-                            pn.indicators.LoadingSpinner(value=True, size=40),
-                            pn.pane.Markdown(
-                                "### Đang tải dữ liệu...",
-                                styles={
-                                    'color': '#4A5568',
-                                    'text-align': 'center',
-                                    'padding': '20px'
-                                }
-                            ),
-                            align='center'
-                        )
-                    )
-                
-                try:
-                    if hasattr(pn.state, 'add_timeout_callback'):
-                        pn.state.add_timeout_callback(
-                            lambda: self.load_tab_data(event.new),
-                            100
-                        )
-                    elif hasattr(pn, 'callbacks') and hasattr(pn.callbacks, 'timeout'):
-                        pn.callbacks.timeout(100, lambda: self.load_tab_data(event.new))
-                    else:
-                        self.load_tab_data(event.new)
-                except Exception as async_error:
-                    logger.warning(f"Error scheduling tab data loading: {str(async_error)}")
-                    self.load_tab_data(event.new)
-            else:
-                self.load_tab_data(event.new)
-                
+            if event.new == 3 and self.current_doc_id:
+                document = self.data_manager.get_document_by_id(self.current_doc_id)
+                if document:
+                    conflict_analysis_status = document.get('conflict_analysis_status', 'NotAnalyzed')
+                    conflict_status = document.get('conflict_status', 'No Conflict')
+                    
+                    if conflict_analysis_status == 'Analyzing' or conflict_status == 'Analyzing':
+                        self._last_conflict_reload = time.time() - 10 
+                    
+                    if document.get('duplicate_group_id'):
+                        if not hasattr(self, 'conflict_manager'):
+                            self.conflict_manager = ConflictManager(self.data_manager, self.chroma_manager)
+                                
+                        self.conflict_manager.sync_group_conflicts(self.current_doc_id)
+                        
+            self.load_tab_data(event.new)
             self._is_loading_tab = False
                     
         except Exception as e:
-            logger.error(f"Error changing tab: {str(e)}")
             logger.error(traceback.format_exc())
             self._is_loading_tab = False
     
@@ -1157,78 +1042,95 @@ class KMSAdmin(param.Parameterized):
             self.show_error_message(f"Lỗi khi tải dữ liệu: {str(e)}")
     
     def on_selection_change(self, event):
+        """
+        Handle the event triggered when the selection changes in the data table.
+
+        This method is called whenever the user selects a new row in the data table. 
+        It performs the following actions:
+        - If no selection is made or the selection is invalid, it clears the document details.
+        - If the selected document is the same as the current document (`self.current_doc_id`), no action is taken.
+        - Otherwise, it updates the `current_doc_id` to the new selected document's ID, logs the change, and ensures that the tabs are visible.
+        - It then loads data for the currently active tab.
+
+        Parameters:
+            event (object): The event object triggered by the selection change. This is typically
+                            provided by the UI framework.
+
+        Returns:
+            None
+        """
         try:
-            if hasattr(self, '_disable_selection_change') and self._disable_selection_change:
-                return
-                
-            if hasattr(self, '_is_processing_click') and self._is_processing_click:
-                return
-                
-            if hasattr(self, '_last_click_time') and time.time() - self._last_click_time < 0.8:  
-                return
-                
-            if hasattr(self, '_selection_processed') and self._selection_processed:
-                self._selection_processed = False
-                return
-                
-            self._is_processing_click = True
             selection = self.data_table.selection
-            
             if not selection or len(self.all_data) <= selection[0]:
-                self.update_button_states(None)
+                self.update_button_states(None)  
                 self.clear_detail_view()
-                self.current_doc_id = None
-                self._is_processing_click = False
                 return
-                
+                    
             selected_row = self.all_data.iloc[selection[0]]
             doc_id = selected_row['id']
             
+            self.update_button_states(selected_row)
+            
             if doc_id != self.current_doc_id:
-                self._user_is_interacting = True
-                
-                self._pause_auto_updates = True
-                
-                self.update_button_states(selected_row)
                 self.current_doc_id = doc_id
                 self.tabs.visible = True
-                
-                self._is_loading_chunks = False if hasattr(self, '_is_loading_chunks') else False
-                self._is_loading_tab = False if hasattr(self, '_is_loading_tab') else False
-                self._is_updating = False if hasattr(self, '_is_updating') else False
-                
                 self.load_tab_data(self.tabs.active)
-                
-                def resume_updates():
-                    self._pause_auto_updates = False
-                    self._user_is_interacting = False
-                    
-                import threading
-                threading.Timer(5.0, resume_updates).start()
-            
-            def reset_processing():
-                self._is_processing_click = False
-                
-            import threading
-            threading.Timer(1.0, reset_processing).start()
             
         except Exception as e:
-            logger.error(f"Lỗi trong selection change: {str(e)}")
-            logger.error(traceback.format_exc())
+            logger.error(f"Error in selection change: {str(e)}")
             self.clear_detail_view()
             self.current_doc_id = None
-            self.update_button_states(None)
-            self._is_processing_click = False
-    
-    def load_chunks_data(self, doc_id, page=1, page_size=10):
+            self.update_button_states(None)  
+
+    def extract_qa_pairs(self, qa_content: str) -> list:
         """
-        Tải chunks data với phân trang
+            Extract question and answer pairs from content in both Q/A and Hỏi/Đáp formats.
+            
+            This method extracts Q&A pairs from the content by normalizing formats,
+            splitting into pairs, and cleaning whitespace.
+            
+            Args:
+                qa_content (str): Raw content containing Q&A pairs
+                    
+            Returns:
+                list: List of (question, answer) tuples
+                    
+            Raises:
+                None: Method handles empty or invalid content by returning empty list
+        """
+        if not qa_content:
+            return []
+
+        qa_pairs = []
+
+        normalized_content = (qa_content.replace('FAQs:', '')
+                     .replace('**Hỏi:**', 'Q:')
+                     .replace('**Đáp:**', 'A:')
+                     .replace('Hỏi:', 'Q:')
+                     .replace('Đáp:', 'A:')
+                     .replace('Câu hỏi:', 'Q:')
+                     .replace('Trả lời:', 'A:'))
         
-        Args:
-            doc_id (str): ID của tài liệu
-            page (int): Trang cần tải
-            page_size (int): Số lượng chunks trên một trang
-        """
+
+        # qa_content = qa_content.replace('**', '')
+
+        if 'ORIGINAL TEXT:' in normalized_content:
+            normalized_content = normalized_content.split('ORIGINAL TEXT:')[0]
+
+
+        # Split on Q: and process each part
+        parts = normalized_content.split('Q:')
+        for part in parts[1:]:
+            if 'A:' in part:
+                q, a = part.split('A:', 1)
+                q = q.strip() 
+                a = a.strip()
+                if q and a:
+                    qa_pairs.append(('Q: ' + q, 'A: ' + a))
+
+        return qa_pairs
+
+    def load_chunks_data(self, doc_id):
         try:
             if self._is_loading_chunks:
                 return
@@ -1242,7 +1144,8 @@ class KMSAdmin(param.Parameterized):
             self.chunks_container.append(
                 pn.Column(
                     spinner,
-                    pn.pane.Markdown("### Đang tải chunks...\nVui lòng chờ trong giây lát...",
+                    pn.pane.Markdown(
+                        "### Đang tải chunks...\nVui lòng chờ trong giây lát...",
                         styles={
                             'color': '#4A5568',
                             'text-align': 'center',
@@ -1257,15 +1160,6 @@ class KMSAdmin(param.Parameterized):
                 )
             )
             
-            cache_key = f"{doc_id}_chunks"
-            cached_chunks = self._get_from_cache(cache_key)
-            
-            if cached_chunks:
-                logger.info(f"Using cached chunks for document {doc_id}")
-                self._display_chunks_with_pagination(cached_chunks, doc_id, page, page_size)
-                self._is_loading_chunks = False
-                return
-                
             document = self.data_manager.get_document_by_id(doc_id)
             if not document:
                 self.chunks_container.clear()
@@ -1275,313 +1169,81 @@ class KMSAdmin(param.Parameterized):
 
             self._last_chunk_load_time = time.time() * 1000
             chunk_status = document.get('chunk_status')
-            self._chunk_status_cache[doc_id] = chunk_status
+            is_duplicate = document.get('is_duplicate')
             
-            if chunk_status == 'Chunked':
-                def load_chunked_data():
-                    try:
-                        current_chunks = self.chroma_manager.get_chunks_by_document_id(doc_id)
-                        
-                        if current_chunks:
-                            self._update_cache(cache_key, current_chunks, priority=3)
-                            self._last_loaded_chunks = doc_id
-                            self._display_chunks_with_pagination(current_chunks, doc_id, page, page_size)
-                        else:
-                            self.chunks_container.clear()
-                            self.show_error_message("Không tìm thấy chunks cho tài liệu này")
-                    except Exception as e:
-                        logger.error(f"Error loading chunks: {str(e)}")
-                        self.chunks_container.clear()
-                        self.show_error_message(f"Lỗi khi tải chunks: {str(e)}")
-                    finally:
-                        self._is_loading_chunks = False
-                        
-                try:
-                    if hasattr(pn.state, 'add_timeout_callback'):
-                        pn.state.add_timeout_callback(load_chunked_data, 100)
-                    elif hasattr(pn, 'callbacks') and hasattr(pn.callbacks, 'timeout'):
-                        pn.callbacks.timeout(100, load_chunked_data)
-                    else:
-                        load_chunked_data()
-                except Exception as async_error:
-                    logger.warning(f"Error scheduling chunks loading: {str(async_error)}")
-                    load_chunked_data()
-            else:
-                self._handle_non_chunked_status(chunk_status, doc_id)
+            logger.info(f"Tải chunks cho tài liệu {doc_id}:")
+            logger.info(f"- chunk_status: {chunk_status}")
+            logger.info(f"- is_duplicate: {is_duplicate}")
+            logger.info(f"- duplicate_group_id: {document.get('duplicate_group_id')}")
+            logger.info(f"- original_chunked_doc: {document.get('original_chunked_doc')}")
+            
+            self._chunk_status_cache[doc_id] = chunk_status
+
+            if is_duplicate:
+                self._handle_referenced_chunks(document)
+                return
+
+            if chunk_status == 'NotRequired':
+                self._handle_referenced_chunks(document)
+                return
+                
+            if chunk_status in ['Pending', 'Chunking', 'Processing']:
+                self._show_loading_state(chunk_status)
                 self._is_loading_chunks = False
+                return
+                
+            if chunk_status == 'ChunkingFailed':
+                self._show_chunking_failed()
+                self._is_loading_chunks = False
+                return
+
+            if chunk_status == 'Chunked':
+                try:
+                    retry_count = 0
+                    max_retries = 3
+                    
+                    while retry_count < max_retries:
+                        current_chunks = self.chroma_manager.get_chunks_by_document_id(doc_id, limit=50)
+                        
+                        if not current_chunks and retry_count < max_retries - 1:
+                            retry_count += 1
+                            logger.info(f"Không tìm thấy chunks cho {doc_id}, thử lại lần {retry_count}/{max_retries}")
+                            time.sleep(1)
+                            continue
+                        
+                        self.chunks_container.clear()
+                        
+                        if not current_chunks:
+                            logger.warning(f"No chunks found for document {doc_id} despite Chunked status")
+                            self.show_error_message("Không tìm thấy chunks cho tài liệu này")
+                            self._is_loading_chunks = False
+                            return
+
+                        cache_key = f"{doc_id}_chunks"
+                        self._update_cache(cache_key, current_chunks)
+                        self._last_loaded_chunks = doc_id
+
+                        for chunk in current_chunks:
+                            self._display_chunk(chunk, doc_id)
+
+                        self.show_info_message(f"Đã tải {len(current_chunks)} chunks")
+                        break  
+                        
+                except Exception as e:
+                    logger.error(traceback.format_exc())
+                    self.chunks_container.clear()
+                    self.show_error_message(f"Lỗi khi tải chunks: {str(e)}")
+            else:
+                logger.warning(f"Unknown chunks status: {chunk_status}")
+                self.show_error_message(f"Trạng thái chunks không hợp lệ: {chunk_status}")
                 
         except Exception as e:
-            logger.error(f"Error in load_chunks_data: {str(e)}")
             logger.error(traceback.format_exc())
             self.show_error_message(f"Error loading chunks: {str(e)}")
+            
+        finally:
             self._is_loading_chunks = False
-    
-    
-    def _handle_non_chunked_status(self, status, doc_id):
-        """
-        Hiển thị trạng thái phù hợp cho các tài liệu không được chia chunks
         
-        Args:
-            status (str): Trạng thái chunk của tài liệu 
-            doc_id (str): ID của tài liệu
-        """
-        try:
-            self.chunks_container.clear()
-            
-            document = self.data_manager.get_document_by_id(doc_id)
-            is_duplicate = document.get('is_duplicate', False)
-            original_doc_id = document.get('original_chunked_doc') or document.get('original_doc_id')
-            duplicate_group_id = document.get('duplicate_group_id')
-            
-            if status in ['Pending', 'Processing', 'Chunking', 'Queued']:
-                self._show_loading_state(status)
-                
-            elif status == 'ChunkingFailed':
-                self._show_chunking_failed()
-                
-            elif status == 'NotRequired':
-                if is_duplicate and original_doc_id:
-                    self.chunks_container.append(
-                        pn.pane.Markdown(
-                            f"### 📄 Tài liệu này không yêu cầu chia chunks\nĐây là bản sao của tài liệu gốc: {original_doc_id}",
-                            styles={
-                                'color': '#4A5568',
-                                'text-align': 'center',
-                                'padding': '20px',
-                                'background': '#F0F5FF',
-                                'border-radius': '8px',
-                                'margin': '20px 0',
-                                'font-size': '16px',
-                                'border': '1px solid #BEE3F8'
-                            }
-                        )
-                    )
-                    
-                    try:
-                        original_chunks = self.chroma_manager.get_chunks_by_document_id(original_doc_id)
-                        if original_chunks:
-                            for chunk in original_chunks:
-                                self._display_chunk(chunk, original_doc_id)
-                            
-                            self.show_info_message(f"Đã tải {len(original_chunks)} chunks từ tài liệu gốc")
-                        else:
-                            self.chunks_container.append(
-                                pn.pane.Markdown(
-                                    f"### Không tìm thấy chunks từ tài liệu gốc {original_doc_id}",
-                                    styles={
-                                        'color': '#DD6B20', 
-                                        'text-align': 'center',
-                                        'padding': '15px',
-                                        'background': '#FFFAF0',
-                                        'border-radius': '8px',
-                                        'margin-top': '15px'
-                                    }
-                                )
-                            )
-                    except Exception as e:
-                        self.chunks_container.append(
-                            pn.pane.Markdown(
-                                f"### Lỗi khi tải chunks từ tài liệu gốc\n{str(e)}",
-                                styles={
-                                    'color': '#E53E3E',
-                                    'text-align': 'center',
-                                    'padding': '15px',
-                                    'background': '#FFF5F5',
-                                    'border-radius': '8px',
-                                    'margin-top': '15px'
-                                }
-                            )
-                        )
-                elif duplicate_group_id:
-                    self.chunks_container.append(
-                        pn.pane.Markdown(
-                            f"### 📄 Tài liệu này không yêu cầu chia chunks\nTài liệu này thuộc nhóm trùng lặp: {duplicate_group_id}",
-                            styles={
-                                'color': '#4A5568',
-                                'text-align': 'center',
-                                'padding': '20px',
-                                'background': '#F0F5FF',
-                                'border-radius': '8px',
-                                'margin': '20px 0',
-                                'font-size': '16px',
-                                'border': '1px solid #BEE3F8'
-                            }
-                        )
-                    )
-                    
-                    try:
-                        group_docs = self.data_manager.get_documents_in_group(duplicate_group_id)
-                        chunked_docs = [d for d in group_docs if d.get('chunk_status') == 'Chunked']
-                        
-                        if chunked_docs:
-                            chunked_doc_id = chunked_docs[0]['id']
-                            original_chunks = self.chroma_manager.get_chunks_by_document_id(chunked_doc_id)
-                            if original_chunks:
-                                self.chunks_container.append(
-                                    pn.pane.Markdown(
-                                        f"### Chunks từ tài liệu trong nhóm: {chunked_doc_id}",
-                                        styles={
-                                            'color': '#3182CE',
-                                            'text-align': 'center',
-                                            'padding': '15px',
-                                            'background': '#EBF8FF',
-                                            'border-radius': '8px',
-                                            'margin': '10px 0'
-                                        }
-                                    )
-                                )
-                                
-                                for chunk in original_chunks:
-                                    self._display_chunk(chunk, chunked_doc_id)
-                                
-                                self.show_info_message(f"Đã tải {len(original_chunks)} chunks từ tài liệu trong nhóm")
-                        else:
-                            self.chunks_container.append(
-                                pn.pane.Markdown(
-                                    "### Không tìm thấy tài liệu đã chia chunks trong nhóm",
-                                    styles={
-                                        'color': '#DD6B20',
-                                        'text-align': 'center',
-                                        'padding': '15px',
-                                        'background': '#FFFAF0',
-                                        'border-radius': '8px',
-                                        'margin-top': '15px'
-                                    }
-                                )
-                            )
-                    except Exception as e:
-                        self.chunks_container.append(
-                            pn.pane.Markdown(
-                                f"### Lỗi khi tìm tài liệu trong nhóm\n{str(e)}",
-                                styles={
-                                    'color': '#E53E3E',
-                                    'text-align': 'center',
-                                    'padding': '15px',
-                                    'background': '#FFF5F5',
-                                    'border-radius': '8px',
-                                    'margin-top': '15px'
-                                }
-                            )
-                        )
-                else:
-                    self.chunks_container.append(
-                        pn.pane.Markdown(
-                            "### 📄 Tài liệu này không yêu cầu chia chunks\nTài liệu này được đánh dấu không cần chia chunks.",
-                            styles={
-                                'color': '#4A5568',
-                                'text-align': 'center',
-                                'padding': '20px',
-                                'background': '#F0F5FF',
-                                'border-radius': '8px',
-                                'margin': '20px 0',
-                                'font-size': '16px',
-                                'border': '1px solid #BEE3F8'
-                            }
-                        )
-                    )
-                
-            elif status == 'Failed':
-                self.chunks_container.append(
-                    pn.pane.Markdown(
-                        "### ❌ Đã xảy ra lỗi khi xử lý tài liệu này\nKhông thể tạo chunks. Vui lòng liên hệ quản trị viên.",
-                        styles={
-                            'color': '#E53E3E',
-                            'text-align': 'center',
-                            'padding': '20px',
-                            'background': '#FFF5F5',
-                            'border-radius': '8px',
-                            'margin': '20px 0',
-                            'font-size': '16px',
-                            'border': '1px solid #FEB2B2'
-                        }
-                    )
-                )
-                
-                if document and document.get('error_message'):
-                    self.chunks_container.append(
-                        pn.pane.Markdown(
-                            f"**Chi tiết lỗi:**\n{document.get('error_message')}",
-                            styles={
-                                'color': '#E53E3E',
-                                'background': '#FFF5F5',
-                                'padding': '15px',
-                                'border-radius': '8px',
-                                'margin': '10px 0',
-                                'font-size': '14px'
-                            }
-                        )
-                    )
-                
-                reprocess_button = pn.widgets.Button(
-                    name="Xử lý lại tài liệu",
-                    button_type="primary",
-                    width=200
-                )
-                
-                def reprocess_document(event):
-                    try:
-                        pass
-                    except Exception as e:
-                        self.show_error_message(f"Lỗi khi xử lý lại tài liệu: {str(e)}")
-                
-                reprocess_button.on_click(reprocess_document)
-                self.chunks_container.append(pn.Row(reprocess_button, align='center'))
-                
-            else:
-                if document:
-                    self._handle_referenced_chunks(document)
-                else:
-                    self.chunks_container.append(
-                        pn.pane.Markdown(
-                            "### ❓ Không thể xác định trạng thái chunk\nKhông thể tải thông tin chunk cho tài liệu này.",
-                            styles={
-                                'color': '#805AD5',
-                                'text-align': 'center',
-                                'padding': '20px',
-                                'background': '#FAF5FF',
-                                'border-radius': '8px',
-                                'margin': '20px 0',
-                                'font-size': '16px',
-                                'border': '1px solid #D6BCFA'
-                            }
-                        )
-                    )
-                    
-                    self.show_error_message(f"Không thể tải chunks: Trạng thái không xác định ({status})")
-                    
-        except Exception as e:
-            logger.error(f"Error handling non-chunked status: {str(e)}")
-            logger.error(traceback.format_exc())
-            self.show_error_message(f"Lỗi xử lý chunks: {str(e)}")
-    
-    def _display_chunks_with_pagination(self, chunks, doc_id, page=1, page_size=10):
-        try:
-            self.chunks_container.clear()
-            
-            total_chunks = len(chunks)
-            
-            self.chunks_container.append(
-                pn.pane.Markdown(
-                    f"**Tổng số chunks:** {total_chunks}",
-                    styles={
-                        'color': '#3182CE',
-                        'background': '#EBF8FF',
-                        'padding': '10px',
-                        'border-radius': '4px',
-                        'margin': '5px 0 15px 0',
-                        'text-align': 'center'
-                    }
-                )
-            )
-            
-            for chunk in chunks:
-                self._display_chunk(chunk, doc_id)
-            
-        except Exception as e:
-            logger.error(f"Error displaying chunks: {str(e)}")
-            self.show_error_message(f"Lỗi hiển thị chunks: {str(e)}")
-        
-    
     def _handle_referenced_chunks(self, document):
         """
         Handle chunks for references/duplicates
@@ -1615,103 +1277,97 @@ class KMSAdmin(param.Parameterized):
             logger.info(f"- is_duplicate: {is_duplicate}")
             logger.info(f"- chunk_status: {chunk_status}")
             
-            if is_duplicate and original_doc and original_doc != doc_id:
-                self.chunks_container.clear()
-                self.chunks_container.append(
-                    pn.pane.Markdown(
-                        "### Tài liệu này là bản trùng lắp\n" +
-                        f"Chunks được tham chiếu từ tài liệu gốc: {original_doc}",
-                        styles={
-                            'color': '#4A5568',
-                            'text-align': 'center',
-                            'padding': '20px',
-                            'background': '#F7FAFC',
-                            'border-radius': '8px',
-                            'margin': '20px 0',
-                            'font-size': '16px',
-                            'border': '1px solid #E2E8F0'
-                        }
-                    )
-                )
-                
-                try:
-                    logger.info(f"Load chunks from original document {original_doc}")
-                    original_chunks = self.chroma_manager.get_chunks_by_document_id(original_doc)
-                    
-                    if original_chunks:
-                        for chunk in original_chunks:
-                            self._display_chunk(chunk, original_doc)
-                        self.show_info_message(f"Loaded {len(original_chunks)} chunks from original document")
-                    else:
-                        logger.warning(f"No chunks found from original document {original_doc}")
-                        self.chunks_container.append(
-                            pn.pane.Markdown(
-                                "### Không tìm thấy chunks từ tài liệu gốc",
-                                styles={
-                                    'color': '#E53E3E',
-                                    'text-align': 'center',
-                                    'padding': '15px',
-                                    'background': '#FFF5F5',
-                                    'border-radius': '8px',
-                                    'margin-top': '20px'
-                                }
-                            )
-                        )
-                except Exception as e:
-                    logger.error(f"Error loading chunks from original document: {str(e)}")
-                    logger.error(traceback.format_exc())
-                    self.show_error_message(f"Lỗi khi tải chunks từ tài liệu gốc: {str(e)}")
-                
-                return
             
             if original_doc == doc_id:
-                logger.warning(f"Document references itself as original: {doc_id}")
+                logger.warning(f"Detected document referencing itself: {doc_id}")
                 original_doc = None
-                
-            if not original_doc and duplicate_group_id:
+            
+            if (not original_doc or original_doc == doc_id) and duplicate_group_id:
+                logger.info(f"Find original document from group {duplicate_group_id}")
                 group_docs = self.data_manager.get_documents_in_group(duplicate_group_id)
+                
                 if group_docs:
                     chunked_docs = [d for d in group_docs if d.get('chunk_status') == 'Chunked']
                     if chunked_docs:
                         chunks_source = chunked_docs[0]['id']
-                        if chunks_source != doc_id:
-                            self.chunks_container.clear()
-                            self.chunks_container.append(
-                                pn.pane.Markdown(
-                                    "### Tài liệu này là bản trùng lắp\n" +
-                                    f"Chunks được tham chiếu từ tài liệu: {chunks_source}",
-                                    styles={
-                                        'color': '#4A5568',
-                                        'text-align': 'center',
-                                        'padding': '20px',
-                                        'background': '#F7FAFC',
-                                        'border-radius': '8px',
-                                        'margin': '20px 0',
-                                        'font-size': '16px',
-                                        'border': '1px solid #E2E8F0'
-                                    }
-                                )
-                            )
+                        logger.info(f"Found chunked documents in group: {chunks_source}")
+                        
+                        if chunks_source == doc_id:
+                            is_duplicate = False
+                            original_doc = None
+                        else:
+                            original_doc = chunks_source
+                            is_duplicate = True
+                    else:
+                        original_candidates = [d for d in group_docs if not d.get('is_duplicate', False)]
+                        if original_candidates:
+                            original_candidates.sort(key=lambda d: d.get('created_date', ''))
+                            original_doc_in_group = original_candidates[0]['id']
+                            logger.info(f"Found original document in group: {original_doc_in_group}")
                             
-                            try:
-                                group_chunks = self.chroma_manager.get_chunks_by_document_id(chunks_source)
-                                if group_chunks:
-                                    for chunk in group_chunks:
-                                        self._display_chunk(chunk, chunks_source)
-                                    self.show_info_message(f"Loaded {len(group_chunks)} chunks from document {chunks_source}")
-                                    return
-                            except Exception as group_error:
-                                logger.error(f"Error loading chunks from group document: {str(group_error)}")
+                            if original_doc_in_group == doc_id:
+                                is_duplicate = False
+                                original_doc = None
+                            else:
+                                original_doc = original_doc_in_group
+                                is_duplicate = True
+                        else:
+                            group_docs.sort(key=lambda d: d.get('created_date', ''))
+                            earliest_doc = group_docs[0]['id']
+                            
+                            if earliest_doc == doc_id:
+                                is_duplicate = False
+                                original_doc = None
+                            else:
+                                original_doc = earliest_doc
+                                is_duplicate = True
             
-            try:
-                current_chunks = self.chroma_manager.get_chunks_by_document_id(doc_id)
-                if current_chunks:
-                    self.chunks_container.clear()
-                    for chunk in current_chunks:
-                        self._display_chunk(chunk, doc_id)
-                    self.show_info_message(f"Loaded {len(current_chunks)} chunks")
-                    return
-                else:
+            is_original_document = (not is_duplicate) or (not original_doc or original_doc == doc_id)
+                        
+            if is_original_document:
+                logger.info(f"Đây là tài liệu gốc: {doc_id}")
+                try:
+                    current_chunks = self.chroma_manager.get_chunks_by_document_id(doc_id)
+                    
+                    if current_chunks:
+                        self.chunks_container.clear()
+                        for chunk in current_chunks:
+                            self._display_chunk(chunk, doc_id)
+                        self.show_info_message(f"Đã tải {len(current_chunks)} chunks")
+                        return
+                    
+                    if duplicate_group_id:
+                        logger.info(f"No direct chunks found, try searching from duplicate group {duplicate_group_id}")
+                        group_docs = self.data_manager.get_documents_in_group(duplicate_group_id)
+                        
+                        chunked_docs = [d for d in group_docs if d.get('chunk_status') == 'Chunked' and d['id'] != doc_id]
+                        if chunked_docs:
+                            alternate_source = chunked_docs[0]['id']
+                            logger.info(f"Try loading chunks from another document in the group: {alternate_source}")
+                            
+                            alternate_chunks = self.chroma_manager.get_chunks_by_document_id(alternate_source)
+                            if alternate_chunks:
+                                self.chunks_container.clear()
+                                self.chunks_container.append(
+                                    pn.pane.Markdown(
+                                        f"### Tải chunks từ tài liệu khác trong nhóm: {alternate_source}",
+                                        styles={
+                                            'color': '#3182CE',
+                                            'text-align': 'center',
+                                            'padding': '15px',
+                                            'background': '#EBF8FF',
+                                            'border-radius': '8px',
+                                            'margin': '10px 0'
+                                        }
+                                    )
+                                )
+                                
+                                for chunk in alternate_chunks:
+                                    self._display_chunk(chunk, alternate_source)
+                                    
+                                self.show_info_message(f"Đã tải {len(alternate_chunks)} chunks từ tài liệu {alternate_source}")
+                                return
+                    
                     self.chunks_container.clear()
                     self.chunks_container.append(
                         pn.pane.Markdown(
@@ -1731,7 +1387,8 @@ class KMSAdmin(param.Parameterized):
                             f"#### Thông tin tài liệu:\n"
                             f"- ID: {doc_id}\n"
                             f"- Trạng thái chunks: {chunk_status}\n"
-                            f"- Thuộc nhóm: {duplicate_group_id if duplicate_group_id else 'Không'}\n",
+                            f"- Thuộc nhóm: {duplicate_group_id if duplicate_group_id else 'Không'}\n"
+                            f"- Là tài liệu gốc: {'Có' if is_original_document else 'Không'}",
                             styles={
                                 'color': '#4A5568',
                                 'background': '#EDF2F7',
@@ -1741,20 +1398,201 @@ class KMSAdmin(param.Parameterized):
                             }
                         )
                     )
-                    self.show_error_message("Không tìm thấy chunks cho tài liệu này")
-            except Exception as e:
-                logger.error(f"Error loading chunks: {str(e)}")
-                logger.error(traceback.format_exc())
-                self.show_error_message(f"Lỗi khi tải chunks: {str(e)}")
                     
+                    if chunk_status != 'Chunked':
+                        self.chunks_container.append(
+                            pn.pane.Markdown(
+                                f"### Tài liệu chưa được xử lý chunks\n"
+                                f"Trạng thái hiện tại: {chunk_status}",
+                                styles={
+                                    'color': '#DD6B20',
+                                    'text-align': 'center',
+                                    'padding': '15px',
+                                    'background': '#FFFAF0',
+                                    'border-radius': '8px',
+                                    'margin-top': '15px'
+                                }
+                            )
+                        )
+                        
+                    self.show_error_message("Không tìm thấy chunks cho tài liệu này")
+                    
+                except Exception as e:
+                    logger.error(traceback.format_exc())
+                    self.show_error_message(f"Lỗi khi tải chunks: {str(e)}")
+                    
+                self._is_loading_chunks = False
+                return
+                    
+            if not original_doc or original_doc == doc_id:
+                logger.warning(f"No original document found for {doc_id}")
+                
+                try:
+                    direct_chunks = self.chroma_manager.get_chunks_by_document_id(doc_id)
+                    if direct_chunks:
+                        self.chunks_container.clear()
+                        self.chunks_container.append(
+                            pn.pane.Markdown(
+                                "### Tải trực tiếp chunks của tài liệu này",
+                                styles={
+                                    'color': '#3182CE',
+                                    'text-align': 'center',
+                                    'padding': '15px',
+                                    'background': '#EBF8FF',
+                                    'border-radius': '8px',
+                                    'margin': '10px 0'
+                                }
+                            )
+                        )
+                        
+                        for chunk in direct_chunks:
+                            self._display_chunk(chunk, doc_id)
+                        self.show_info_message(f"Đã tải {len(direct_chunks)} chunks trực tiếp")
+                    else:
+                        self.chunks_container.clear()
+                        self.chunks_container.append(
+                            pn.pane.Markdown(
+                                "### Không tìm thấy chunks cho tài liệu này",
+                                styles={
+                                    'color': '#E53E3E',
+                                    'text-align': 'center',
+                                    'padding': '15px', 
+                                    'background': '#FFF5F5',
+                                    'border-radius': '8px'
+                                }
+                            )
+                        )
+                        self.show_error_message("Không tìm thấy chunks")
+                except Exception as e:
+                    logger.error(f"Lỗi khi tải chunks trực tiếp: {str(e)}")
+                    self.show_error_message(f"Lỗi khi tải chunks: {str(e)}")
+                    
+                self._is_loading_chunks = False
+                return
+                    
+            if is_duplicate and original_doc and original_doc != doc_id:
+                self.chunks_container.clear()
+                self.chunks_container.append(
+                    pn.pane.Markdown(
+                        "### Tài liệu này là bản trùng lắp\n" +
+                        f"Chunks được tham chiếu từ tài liệu gốc: {original_doc}",
+                        styles={
+                            'color': '#4A5568',
+                            'text-align': 'center',
+                            'padding': '20px',
+                            'background': '#F7FAFC',
+                            'border-radius': '8px',
+                            'margin': '20px 0',
+                            'font-size': '16px',
+                            'border': '1px solid #E2E8F0'
+                        }
+                    )
+                )
+            else:
+                self.chunks_container.clear()
+            
+            try:
+                logger.info(f"Load chunks from original document {original_doc}")
+                original_chunks = self.chroma_manager.get_chunks_by_document_id(original_doc)
+                
+                if original_chunks:
+                    for chunk in original_chunks:
+                        self._display_chunk(chunk, original_doc)
+                    self.show_info_message(f"Loaded {len(original_chunks)} chunks from original document")
+                else:
+                    
+                    logger.warning(f"Không tìm thấy chunks từ tài liệu gốc {original_doc}, thử tải từ tài liệu hiện tại")
+          
+                    try:
+                        current_chunks = self.chroma_manager.get_chunks_by_document_id(doc_id)
+                        if current_chunks:
+                            for chunk in current_chunks:
+                                self._display_chunk(chunk, doc_id)
+                            self.show_info_message(f"Đã tải {len(current_chunks)} chunks")
+                        else:
+                            self.chunks_container.append(
+                                pn.pane.Markdown(
+                                    "### Không tìm thấy chunks nào cho tài liệu này",
+                                    styles={
+                                        'color': '#E53E3E',
+                                        'text-align': 'center',
+                                        'padding': '15px',
+                                        'background': '#FFF5F5',
+                                        'border-radius': '8px',
+                                        'margin-top': '20px'
+                                    }
+                                )
+                            )
+                    except Exception as current_error:
+                        logger.error(f"Error loading chunks of current document: {str(current_error)}")
+                                    
+                    
+            except Exception as e:
+                logger.error(f"Error loading chunks from original document {original_doc}: {str(e)}")
+                logger.error(traceback.format_exc())
+                
+                try:
+                    current_chunks = self.chroma_manager.get_chunks_by_document_id(doc_id)
+                    if current_chunks:
+                        self.chunks_container.append(
+                            pn.pane.Markdown(
+                                "### Đang thử tải chunks của tài liệu hiện tại...",
+                                styles={
+                                    'color': '#3182CE',
+                                    'text-align': 'center',
+                                    'padding': '10px',
+                                    'margin-top': '20px',
+                                    'background': '#EBF8FF',
+                                    'border-radius': '8px'
+                                }
+                            )
+                        )
+                        
+                        for chunk in current_chunks:
+                            self._display_chunk(chunk, doc_id)
+                        self.show_info_message(f"Đã tải {len(current_chunks)} chunks của tài liệu hiện tại")
+                    else:
+                        self.chunks_container.append(
+                            pn.pane.Markdown(
+                                "### Không tìm thấy chunks nào cho tài liệu này",
+                                styles={
+                                    'color': '#E53E3E',
+                                    'text-align': 'center',
+                                    'padding': '15px',
+                                    'background': '#FFF5F5',
+                                    'border-radius': '8px',
+                                    'margin-top': '20px'
+                                }
+                            )
+                        )
+                except Exception as fallback_error:
+                    logger.error(f"Error loading fallback chunks: {str(fallback_error)}")
+                    
+                    self.chunks_container.append(
+                        pn.pane.Markdown(
+                            "### Không thể tải chunks cho tài liệu này",
+                            styles={
+                                'color': '#E53E3E',
+                                'text-align': 'center',
+                                'padding': '15px',
+                                'background': '#FFF5F5',
+                                'border-radius': '8px',
+                                'margin-top': '20px'
+                            }
+                        )
+                    )
+                    
+            finally:
+                self._is_loading_chunks = False
+                
         except Exception as e:
-            logger.error(f"Error handling referenced chunks: {str(e)}")
+            logger.error(f"Lỗi khi xử lý tài liệu: {str(e)}")
             logger.error(traceback.format_exc())
             
             self.chunks_container.clear()
             self.chunks_container.append(
                 pn.pane.Markdown(
-                    "### Đã xảy ra lỗi khi xử lý chunks",
+                    "### Đã xảy ra lỗi khi tải chunks",
                     styles={
                         'color': '#E53E3E',
                         'text-align': 'center',
@@ -2061,16 +1899,14 @@ class KMSAdmin(param.Parameterized):
                                                                 alert_type="success"
                                                             )
                                                         except Exception as ui_error:
-                                                            error_msg = str(ui_error).replace('%', '%%')
-                                                            logger.error(f"Error updating conflicts UI: {error_msg}")
+                                                            logger.error(f"Error updating conflicts UI: {str(ui_error)}")
                                                     
                                                     import threading
                                                     ui_thread = threading.Thread(target=update_conflicts_ui)
                                                     ui_thread.daemon = True
                                                     ui_thread.start()
                                         except Exception as analyze_error:
-                                            error_msg = str(analyze_error).replace('%', '%%')
-                                            logger.error(f"Error analyzing document {doc_id}: {error_msg}")
+                                            logger.error(f"Error analyzing document {doc_id}: {str(analyze_error)}")
                                     
                                     if duplicate_group_id:
                                         for related_id in related_docs:
@@ -2079,8 +1915,7 @@ class KMSAdmin(param.Parameterized):
                                                     logger.info(f"Auto-analyzing related document {related_id}")
                                                     self.conflict_manager.analyze_document(related_id)
                                                 except Exception as related_error:
-                                                    error_msg = str(related_error).replace('%', '%%')
-                                                    logger.error(f"Error analyzing related document {related_id}: {error_msg}")
+                                                    logger.error(f"Error analyzing related document {related_id}: {str(related_error)}")
                                         
                                         try:
                                             self.conflict_manager.sync_group_conflicts_by_group(duplicate_group_id)
@@ -2366,201 +2201,7 @@ class KMSAdmin(param.Parameterized):
                     }
                 )
             )
-            
-    def load_conflicts_data(self, doc_id):
-        try:
-            if hasattr(self, '_is_loading_conflicts') and self._is_loading_conflicts:
-                return
 
-            self._is_loading_conflicts = True
-            
-            cache_key = f"{doc_id}_conflicts"
-            cached_conflicts = self._get_from_cache(cache_key)
-            
-            if cached_conflicts:
-                self._display_cached_conflicts(cached_conflicts, doc_id)
-                
-                try:
-                    if hasattr(pn.state, 'add_timeout_callback'):
-                        pn.state.add_timeout_callback(
-                            lambda: self._load_fresh_conflicts_data(doc_id, cache_key),
-                            500
-                        )
-                    elif hasattr(pn, 'callbacks') and hasattr(pn.callbacks, 'timeout'):
-                        pn.callbacks.timeout(500, lambda: self._load_fresh_conflicts_data(doc_id, cache_key))
-                    else:
-                        import threading
-                        thread = threading.Thread(
-                            target=self._load_fresh_conflicts_data,
-                            args=(doc_id, cache_key),
-                            daemon=True
-                        )
-                        thread.start()
-                except Exception as async_error:
-                    logger.warning(f"Error scheduling fresh conflicts loading: {str(async_error)}")
-                    
-                    self._load_fresh_conflicts_data(doc_id, cache_key)
-                return
-                    
-            if hasattr(self, 'conflicts_container'):
-                self.conflicts_container.clear()
-                self.conflicts_container.append(
-                    pn.Column(
-                        pn.indicators.LoadingSpinner(value=True, size=40),
-                        pn.pane.Markdown(
-                            "### Đang tải thông tin mâu thuẫn...",
-                            styles={
-                                'color': '#4A5568',
-                                'text-align': 'center',
-                                'padding': '20px',
-                                'background': '#EDF2F7',
-                                'border-radius': '8px',
-                                'margin': '20px 0'
-                            }
-                        ),
-                        align='center'
-                    )
-                )
-            
-            try:
-                if hasattr(pn.state, 'add_timeout_callback'):
-                    pn.state.add_timeout_callback(
-                        lambda: self._load_fresh_conflicts_data(doc_id, cache_key),
-                        100
-                    )
-                elif hasattr(pn, 'callbacks') and hasattr(pn.callbacks, 'timeout'):
-                    pn.callbacks.timeout(100, lambda: self._load_fresh_conflicts_data(doc_id, cache_key))
-                else:
-                    import threading
-                    thread = threading.Thread(
-                        target=self._load_fresh_conflicts_data,
-                        args=(doc_id, cache_key),
-                        daemon=True
-                    )
-                    thread.start()
-            except Exception as async_error:
-                logger.warning(f"Error scheduling conflicts loading: {str(async_error)}")
-           
-                self._load_fresh_conflicts_data(doc_id, cache_key)
-                    
-        except Exception as e:
-            logger.error(f"Error in load_conflicts_data: {str(e)}")
-            logger.error(traceback.format_exc())
-            self._is_loading_conflicts = False
-            self.show_error_message(f"Lỗi khi tải thông tin mâu thuẫn: {str(e)}")
-         
-    def _load_fresh_conflicts_data(self, doc_id, cache_key):
-        """
-        Tải dữ liệu mâu thuẫn mới và cập nhật cache
-        """
-        try:
-            document = self.data_manager.get_document_by_id(doc_id)
-            if not document:
-                if hasattr(self, 'conflicts_container'):
-                    self.conflicts_container.clear()
-                    self.conflicts_container.append(
-                        pn.pane.Markdown(
-                            "### Không tìm thấy thông tin tài liệu",
-                            styles={
-                                'color': '#E53E3E',
-                                'text-align': 'center',
-                                'padding': '15px',
-                                'background': '#FFF5F5',
-                                'border-radius': '8px',
-                                'margin': '10px 0'
-                            }
-                        )
-                    )
-                self._is_loading_conflicts = False
-                return
-
-            conflict_analysis_status = document.get('conflict_analysis_status', 'NotAnalyzed')
-            conflict_status = document.get('conflict_status', 'No Conflict')
-            
-            if conflict_analysis_status == 'Analyzing' or conflict_status == 'Analyzing':
-                if hasattr(self, 'conflicts_container'):
-                    self.conflicts_container.clear()
-                    self.conflicts_container.append(
-                        pn.Column(
-                            pn.indicators.LoadingSpinner(value=True, size=40),
-                            pn.pane.Markdown(
-                                "### Đang phân tích mâu thuẫn...\nVui lòng chờ trong giây lát...",
-                                styles={
-                                    'color': '#4A5568',
-                                    'text-align': 'center',
-                                    'padding': '20px',
-                                    'background': '#EDF2F7',
-                                    'border-radius': '8px',
-                                    'margin': '20px 0'
-                                }
-                            ),
-                            align='center'
-                        )
-                    )
-                    
-                self._last_conflict_reload = time.time()
-                self._is_loading_conflicts = False
-                return
-                    
-            conflict_info = document.get('conflict_info')
-            has_conflicts = document.get('has_conflicts', False)
-            
-            conflicts_data = {
-                'content_conflicts': [],
-                'internal_conflicts': [],
-                'external_conflicts': [],
-                'last_updated': datetime.now().isoformat(),
-                'analysis_status': conflict_analysis_status,
-                'has_conflicts': has_conflicts,
-                'conflict_status': conflict_status
-            }
-            
-            if conflict_info:
-                if isinstance(conflict_info, str):
-                    try:
-                        conflict_info = json.loads(conflict_info)
-                    except json.JSONDecodeError:
-                        conflict_info = {}
-                
-                if isinstance(conflict_info, dict):
-                    content_conflicts = conflict_info.get('content_conflicts', [])
-                    internal_conflicts = conflict_info.get('internal_conflicts', [])
-                    external_conflicts = conflict_info.get('external_conflicts', [])
-                    
-                    
-                    if not isinstance(content_conflicts, list):
-                        content_conflicts = []
-                    if not isinstance(internal_conflicts, list):
-                        internal_conflicts = []
-                    if not isinstance(external_conflicts, list):
-                        external_conflicts = []
-                    
-                    logger.info(f"Loaded conflicts data: content={len(content_conflicts)}, "
-                            f"internal={len(internal_conflicts)}, external={len(external_conflicts)}")
-                    
-                    total_conflicts = {
-                        'content': len(content_conflicts),
-                        'internal': len(internal_conflicts),
-                        'external': len(external_conflicts),
-                        'total': len(content_conflicts) + len(internal_conflicts) + len(external_conflicts)
-                    }
-                    
-                    conflicts_data['content_conflicts'] = content_conflicts[:20]
-                    conflicts_data['internal_conflicts'] = internal_conflicts[:20]
-                    conflicts_data['external_conflicts'] = external_conflicts[:20]
-                    conflicts_data['total_conflicts'] = total_conflicts
-                
-                self._update_cache(cache_key, conflicts_data, priority=3)
-                
-                self._display_cached_conflicts(conflicts_data, doc_id)
-        
-        except Exception as e:
-            logger.error(f"Error loading fresh conflicts data: {str(e)}")
-            logger.error(traceback.format_exc())
-            self.show_error_message(f"Lỗi khi tải thông tin mâu thuẫn mới: {str(e)}")
-        finally:
-            self._is_loading_conflicts = False
-    
     def get_content_preview(self, content):
         """
         Format a content preview with a specified maximum length.
@@ -2592,6 +2233,71 @@ class KMSAdmin(param.Parameterized):
         """
         return status
 
+    def on_selection_change(self, event):
+        """
+        Handle changes in document selection within the data table.
+
+        Returns:
+            None
+        """
+        try:
+            selection = self.data_table.selection
+            if not selection or len(self.all_data) <= selection[0]:
+                self.clear_detail_view()
+                return
+                
+            selected_row = self.all_data.iloc[selection[0]]
+            doc_id = selected_row['id']
+            
+            if doc_id != self.current_doc_id:
+                self.current_doc_id = doc_id
+                self.tabs.visible = True
+                
+                if hasattr(self, '_last_loaded_tab'):
+                    del self._last_loaded_tab
+                    
+                self.load_tab_data(self.tabs.active)
+            
+        except Exception as e:
+            logger.error(f"Error in selection change: {str(e)}")
+            self.clear_detail_view()
+            self.current_doc_id = None
+        
+    def on_row_click(self, event):
+        """
+        Handle the row click event in the data table.
+
+        This method is triggered when a user clicks on a row in the data table. It sets the selected row 
+        in the table and updates the `selection` state. The method ensures that the loading indicator 
+        is shown while the selection is being processed. It does not load any data at this stage; it 
+        only updates the selection state and handles any potential exceptions that may occur during 
+        the process.
+
+        Parameters:
+            event (object): The event object that contains information about the row click, including 
+                            the row index and any relevant event data.
+
+        Returns:
+            None: This method does not return any values. It updates the selection in the data table 
+                and manages the loading indicator.
+        """
+        if event.row is not None:
+            try:
+                self.loading_indicator.value = True
+                selected_row = self.all_data.iloc[event.row]
+                
+                self.update_button_states(selected_row)
+                
+                self.data_table.selection = [event.row]
+                
+            except Exception as e:
+                logger.error(f"Lỗi khi click dòng: {str(e)}")
+                self.clear_detail_view()
+                self.current_doc_id = None
+                self.update_button_states(None)
+            finally:
+                self.loading_indicator.value = False
+
     def get_filtered_data(self, status=None):
         try:
             
@@ -2620,26 +2326,23 @@ class KMSAdmin(param.Parameterized):
                 self.loading_indicator.value = True
                         
             status_filter = self.doc_type_selector.value if hasattr(self, 'doc_type_selector') else "All"
+            logger.info(f"Update table with filter: {status_filter}")
             
-            cache_key = f"table_data_{status_filter}"
-            cached_data = self._get_from_cache(cache_key)
-            
-            if cached_data is not None:
-                logger.info(f"Using cached data for filter: {status_filter}")
-                self.all_data = cached_data
-            else:
-                try:
-                    if status_filter != "All":
-                        self.all_data = self.data_manager.get_filtered_data(status=status_filter)
-                    else:
-                        self.all_data = self.data_manager.get_all_documents()
-                    
-                    self._update_cache(cache_key, self.all_data, priority=4)
-                            
-                except Exception as db_error:
-                    logger.error(f"Error getting data: {str(db_error)}")
-                    logger.error(traceback.format_exc())
-                    
+            try:
+                if status_filter != "All":
+                    if status_filter == "Pending":
+                        self.all_data = self.data_manager.get_filtered_data(status="Pending")
+                    elif status_filter == "Approved":
+                        self.all_data = self.data_manager.get_filtered_data(status="Approved")
+                    elif status_filter == "Rejected":
+                        self.all_data = self.data_manager.get_filtered_data(status="Rejected")
+                else:
+                    self.all_data = self.data_manager.get_all_documents()
+                        
+            except Exception as db_error:
+                logger.error(f"Error while getting data: {str(db_error)}")
+                logger.error(traceback.format_exc())
+                        
             if self.current_doc_id and self._check_conflict_update_needed():
                 self._update_conflict_for_current_doc()
                     
@@ -2652,113 +2355,37 @@ class KMSAdmin(param.Parameterized):
                     
                 available_columns = [col for col in self.displayed_columns if col in self.all_data.columns]
                 
-                if hasattr(self, '_last_data_hash'):
-                    import hashlib
-                    new_hash = hashlib.md5(pd.util.hash_pandas_object(self.all_data[available_columns]).values).hexdigest()
-                    
-                    if new_hash == self._last_data_hash:
-                        logger.info("Data unchanged, skipping table update")
-                        self._is_updating = False
-                        if hasattr(self, 'loading_indicator'):
-                            self.loading_indicator.value = False
-                        return
+                if 'conflict_status' in self.all_data.columns:
+                    for idx, row in self.all_data.iterrows():
+                        has_conflicts = row.get('has_conflicts', False)
+                        conflict_status = row.get('conflict_status')
                         
-                    self._last_data_hash = new_hash
-                else:
-                    import hashlib
-                    self._last_data_hash = hashlib.md5(pd.util.hash_pandas_object(self.all_data[available_columns]).values).hexdigest()
+                        if (has_conflicts and (conflict_status != "Mâu thuẫn")) or \
+                        (not has_conflicts and (conflict_status == "Mâu thuẫn")):
+                            self.all_data.at[idx, 'conflict_status'] = "Mâu thuẫn" if has_conflicts else "Không mâu thuẫn"
                 
                 self._format_initial_data()
-
-                filtered_data = self.all_data[available_columns].copy()
+                filtered_data = self.all_data[available_columns]
+                self.data_table.value = filtered_data
                 
-                if not hasattr(self, '_last_table_value') or not self._last_table_value.equals(filtered_data):
-                    self.data_table.value = filtered_data
-                    self._last_table_value = filtered_data.copy()
-                    
-                    if self.current_doc_id and self.data_table.selection:
-                        selected_index = self.data_table.selection[0]
-                        if selected_index < len(self.all_data):
-                            self.update_detail_view(selected_index)
+                if self.current_doc_id and self.data_table.selection:
+                    selected_index = self.data_table.selection[0]
+                    if selected_index < len(self.all_data):
+                        self.update_detail_view(selected_index)
                         
-                else:
-                    logger.info("Table value unchanged, no update needed")
+                if hasattr(self.data_table, 'param'):
+                    self.data_table.param.trigger('value')
                         
             except Exception as ui_error:
-                logger.error(f"Error updating table UI: {str(ui_error)}")
                 logger.error(traceback.format_exc())
                         
         except Exception as e:
-            logger.error(f"Error in update_table: {str(e)}")
             logger.error(traceback.format_exc())
         finally:
             self._is_updating = False
             if hasattr(self, 'loading_indicator'):
                 self.loading_indicator.value = False
             self._last_update = datetime.now()
-    
-    def memoize(func):
-        """Decorator để cache kết quả của các hàm nặng"""
-        cache = {}
-        
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            if len(args) > 1:
-                key = hash(args[1])  
-            else:
-                key = hash(str(kwargs))
-                
-            if key not in cache:
-                cache[key] = func(*args, **kwargs)
-                
-                if len(cache) > 100:
-                    import random
-                    random_key = random.choice(list(cache.keys()))
-                    del cache[random_key]
-                    
-            return cache[key]
-        
-        return wrapper
-    
-    @memoize
-    def extract_qa_pairs(self, qa_content: str) -> list:
-        """
-        Extract question and answer pairs from content in both Q/A and Hỏi/Đáp formats.
-        
-        Args:
-            qa_content (str): Raw content containing Q&A pairs
-                
-        Returns:
-            list: List of (question, answer) tuples
-        """
-        if not qa_content:
-            return []
-
-        qa_pairs = []
-
-        normalized_content = (qa_content.replace('FAQs:', '')
-                    .replace('**Hỏi:**', 'Q:')
-                    .replace('**Đáp:**', 'A:')
-                    .replace('Hỏi:', 'Q:')
-                    .replace('Đáp:', 'A:')
-                    .replace('Câu hỏi:', 'Q:')
-                    .replace('Trả lời:', 'A:')
-                    .replace('H:', 'Q:')
-                    .replace('C:', 'A:'))
-
-        if 'ORIGINAL TEXT:' in normalized_content:
-            normalized_content = normalized_content.split('ORIGINAL TEXT:')[0]
-
-        parts = normalized_content.split('Q:')
-        for part in parts[1:]:
-            if 'A:' in part:
-                q, a = part.split('A:', 1)
-                q = q.strip() 
-                a = a.strip()
-                if q and a:
-                    qa_pairs.append(('Q: ' + q, 'A: ' + a))
-
-        return qa_pairs
     
     def _update_conflict_for_current_doc(self):
         """Update conflicting information for current document"""
@@ -2841,74 +2468,10 @@ class KMSAdmin(param.Parameterized):
         color, text = status_map.get(status, ('#718096', status))
         return f'<span style="background-color: {color}; color: white; padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: bold;">{text}</span>'
 
-    def on_row_click(self, event):
-        try:
-            current_time = time.time()
-            
-            if hasattr(self, '_last_click_time') and current_time - self._last_click_time < 0.3:
-                return
-                
-            if hasattr(self, '_is_handling_click') and self._is_handling_click:
-                return
-                
-            self._is_handling_click = True
-            self._last_click_time = current_time
-            
-            if event.row is None or event.row >= len(self.all_data):
-                self._is_handling_click = False
-                return
-            
-            def delayed_process():
-                try:
-                    if not hasattr(self, 'loading_indicator'):
-                        return
-                        
-                    self.loading_indicator.value = True
-                    
-                    selected_row = self.all_data.iloc[event.row]
-                    doc_id = selected_row['id']
-                    
-                    if doc_id == getattr(self, 'current_doc_id', None):
-                        if hasattr(self, 'update_detail_view'):
-                            self.update_detail_view(event.row)
-                        return
-                    
-                    self.update_button_states(selected_row)
-                    self.data_table.selection = [event.row]
-                    self.current_doc_id = doc_id
-                    self.tabs.visible = True
-                    
-                    self._is_loading_chunks = False 
-                    self._is_loading_tab = False
-                    self._is_updating = False
-                    
-                    active_tab = self.tabs.active if hasattr(self, 'tabs') else 0
-                    self.load_tab_data(active_tab)
-                except Exception as e:
-                    logger.error(f"Error in delayed processing: {str(e)}")
-                finally:
-                    if hasattr(self, 'loading_indicator'):
-                        self.loading_indicator.value = False
-                    self._is_handling_click = False
-            
-            try:
-                if hasattr(pn.state, 'add_timeout_callback'):
-                    pn.state.add_timeout_callback(delayed_process, 50)
-                elif hasattr(pn, 'callbacks') and hasattr(pn.callbacks, 'timeout'):
-                    pn.callbacks.timeout(50, delayed_process)
-                else:
-                    delayed_process()
-            except AttributeError:
-                delayed_process()
-            
-        except Exception as e:
-            logger.error(f"Error handling row click: {str(e)}")
-            logger.error(traceback.format_exc())
-            self._is_handling_click = False
-            if hasattr(self, 'loading_indicator'):
-                self.loading_indicator.value = False
-    
     def update_detail_view(self, selected_index=None):
+        """
+        Update view showing document details
+        """
         try:
             if selected_index is None and self.data_table.selection:
                 selected_index = self.data_table.selection[0]
@@ -2918,219 +2481,135 @@ class KMSAdmin(param.Parameterized):
                 return
 
             selected_row = self.all_data.iloc[selected_index]
-            doc_id = selected_row['id']
             content = selected_row.get('content', '')
-            
-            cache_key = f"{doc_id}_detail_view"
-            cached_data = self._get_from_cache(cache_key)
-            
-            formatted_content = self._format_content(content)
-            
-            self._render_basic_detail_view(selected_row, formatted_content)
-            
-            if cached_data and 'qa_content' in cached_data:
-                self._add_qa_section(cached_data['qa_content'])
-            
-            try:
-                if hasattr(pn.state, 'add_timeout_callback'):
-                    pn.state.add_timeout_callback(
-                        lambda: self._load_qa_content_background(doc_id, cache_key),
-                        200
-                    )
-                elif hasattr(pn, 'callbacks') and hasattr(pn.callbacks, 'timeout'):
-                    pn.callbacks.timeout(200, lambda: self._load_qa_content_background(doc_id, cache_key))
-                else:
-                    import threading
-                    thread = threading.Thread(
-                        target=self._load_qa_content_background,
-                        args=(doc_id, cache_key),
-                        daemon=True
-                    )
-                    thread.start()
-            except Exception as async_error:
-                logger.warning(f"Could not schedule background loading: {str(async_error)}")
-                self._load_qa_content_background(doc_id, cache_key)
-            
+            formatted_content = format_content_markdown(content)
+
+            processed_content = ""
+            if self.current_doc_id:
+                try:
+                    chunks = self.chroma_manager.get_chunks_by_document_id(self.current_doc_id)
+                    if chunks:
+                        qa_parts = []
+                        for chunk in chunks:
+                            qa_content = chunk.get('qa_content', '')
+                            if qa_content:
+                                qa_pairs = self.extract_qa_pairs(qa_content)
+                                for q, a in qa_pairs:
+                                    qa_parts.append(f"{q}\n{a}\n")
+                        
+                        processed_content = "\n".join(qa_parts)
+                except Exception as e:
+                    logger.error(f"Error loading QA content: {str(e)}")
+
+            approval_status = selected_row.get('approval_status', 'Chờ duyệt')
+            approval_date = selected_row.get('approval_date', '')
+            if pd.isna(approval_date) or approval_date == 'None' or approval_date == 'NaT' or not approval_date:
+                approval_date = ''
+                
+            approver = selected_row.get('approver', '') 
+            approver = '' if approver == 'None' else approver
+
+            status_html = self.get_approval_badge(approval_status)
+
+            general_info = pn.Column(
+                pn.pane.Markdown("### THÔNG TIN TÀI LIỆU", styles={
+                    'color': '#2c5282',
+                    'font-size': '15px',
+                    'margin-bottom': '5px'
+                }),
+                pn.Row(
+                    pn.Column(
+                        pn.pane.Markdown(
+                            f"**ID:** {selected_row.get('id', '')}\n"  
+                            f"**Ngày tạo:** {selected_row.get('created_date', '')}",
+                            styles={
+                                'font-size': '13px',
+                                'background': '#f8fafc',
+                                'padding': '12px',
+                                'border-radius': '6px', 
+                                'border-left': '4px solid #4299e1',
+                                'margin': '5px 0'
+                            }
+                        ),
+                        pn.pane.Markdown(
+                            "**Trạng thái:**",
+                            styles={
+                                'font-size': '13px',
+                                'margin-bottom': '5px'
+                            }
+                        ),
+                        pn.pane.HTML(status_html),
+                        width=400
+                    ),
+                    pn.Column(
+                        pn.pane.Markdown(
+                            f"**Người gửi:** {selected_row.get('sender', '')}\n"
+                            f"**Ngày duyệt:** {approval_date}\n" 
+                            f"**Người duyệt:** {approver}",
+                            styles={
+                                'font-size': '13px',
+                                'background': '#f8fafc',
+                                'padding': '12px', 
+                                'border-radius': '6px',
+                                'border-left': '4px solid #4299e1',
+                                'margin': '5px 0'
+                            }
+                        ),
+                        width=400
+                    ),
+                    sizing_mode='stretch_width'
+                )
+            )
+
+            content_view = pn.Column(
+                pn.pane.Markdown("### NỘI DUNG GỐC", styles={
+                    'color': '#2c5282',
+                    'font-size': '16px',
+                    'font-weight': 'bold',
+                    'margin-top': '20px',
+                    'margin-bottom': '10px'
+                }),
+                pn.pane.Markdown(
+                    formatted_content,
+                    styles={
+                        'background': '#f8fafc',
+                        'padding': '15px',
+                        'border-radius': '6px',
+                        'font-size': '14px',
+                        'line-height': '1.6',
+                        'border-left': '4px solid #4299e1',
+                        'white-space': 'pre-wrap',
+                        'word-break': 'break-word'
+                    }
+                ),
+                
+                pn.pane.Markdown(
+                    processed_content,
+                    styles={
+                        'background': '#f8fafc',
+                        'padding': '15px',
+                        'border-radius': '6px',
+                        'font-size': '14px',
+                        'line-height': '1.6',
+                        'border-left': '4px solid #4299e1',
+                        'white-space': 'pre-wrap',
+                        'word-break': 'break-word'
+                    }
+                ),
+                sizing_mode='stretch_width'
+            )
+
+            self.detail_view[:] = [
+                general_info,
+                content_view
+            ]
+
             self.save_button.visible = True
 
         except Exception as e:
             logger.error(f"Error updating detail view: {str(e)}")
-            logger.error(traceback.format_exc())
+            traceback.print_exc()
             self.clear_detail_view()
-    
-    def _format_content(self, content):
-        formatted_content = ""
-        if content:
-            lines = content.split('\n')
-            for line in lines:
-                line = line.strip()
-                if line.startswith('#'): 
-                    formatted_content += f"\n{line}\n\n"
-                elif line:  
-                    formatted_content += f"{line}\n\n"
-                else:  
-                    formatted_content += "\n"
-                    
-            formatted_content = formatted_content.replace('\n\n\n', '\n\n')
-        
-        return formatted_content
-
-    def _render_basic_detail_view(self, selected_row, formatted_content):
-        approval_status = selected_row.get('approval_status', 'Chờ duyệt')
-        approval_date = selected_row.get('approval_date', '')
-        if pd.isna(approval_date) or approval_date == 'None' or approval_date == 'NaT' or not approval_date:
-            approval_date = ''
-            
-        approver = selected_row.get('approver', '') 
-        approver = '' if approver == 'None' else approver
-
-        status_html = self.get_approval_badge(approval_status)
-
-        general_info = pn.Column(
-            pn.pane.Markdown("### THÔNG TIN TÀI LIỆU", styles={
-                'color': '#2c5282',
-                'font-size': '18px',
-                'margin-bottom': '10px',
-                'font-weight': 'bold'
-            }),
-            pn.Row(
-                pn.Column(
-                    pn.pane.Markdown(
-                        f"**ID:** {selected_row.get('id', '')}\n"  
-                        f"**Ngày tạo:** {selected_row.get('created_date', '')}",
-                        styles={
-                            'font-size': '14px',
-                            'background': '#f8fafc',
-                            'padding': '15px',
-                            'border-radius': '8px', 
-                            'border-left': '4px solid #4299e1',
-                            'margin': '5px 0'
-                        }
-                    ),
-                    pn.pane.Markdown(
-                        "**Trạng thái:**",
-                        styles={
-                            'font-size': '14px',
-                            'margin-bottom': '5px',
-                            'margin-top': '10px'
-                        }
-                    ),
-                    pn.pane.HTML(status_html),
-                    width=400
-                ),
-                pn.Column(
-                    pn.pane.Markdown(
-                        f"**Người gửi:** {selected_row.get('sender', '')}\n"
-                        f"**Ngày duyệt:** {approval_date}\n" 
-                        f"**Người duyệt:** {approver}",
-                        styles={
-                            'font-size': '14px',
-                            'background': '#f8fafc',
-                            'padding': '15px', 
-                            'border-radius': '8px',
-                            'border-left': '4px solid #4299e1',
-                            'margin': '5px 0'
-                        }
-                    ),
-                    width=400
-                ),
-                sizing_mode='stretch_width'
-            )
-        )
-
-        content_section = pn.Column(
-            pn.pane.Markdown("### NỘI DUNG GỐC", styles={
-                'color': '#2c5282',
-                'font-size': '18px',
-                'font-weight': 'bold',
-                'margin-top': '25px',
-                'margin-bottom': '10px'
-            }),
-            pn.pane.Markdown(
-                formatted_content,
-                styles={
-                    'background': '#f8fafc',
-                    'padding': '20px',
-                    'border-radius': '8px',
-                    'font-size': '14px',
-                    'line-height': '1.6',
-                    'border-left': '4px solid #4299e1',
-                    'white-space': 'pre-wrap',
-                    'word-break': 'break-word',
-                    'margin-bottom': '20px'
-                }
-            ),
-            sizing_mode='stretch_width'
-        )
-
-        self.detail_view[:] = [general_info, content_section]
-    
-    def _load_qa_content_background(self, doc_id, cache_key):
-        try:
-            processed_content = ""
-            chunks = self.chroma_manager.get_chunks_by_document_id(doc_id)
-            if chunks:
-                qa_parts = []
-                for chunk in chunks:
-                    metadata = chunk.get('metadata', {})
-                    revised_chunk = metadata.get('revised_chunk', '')
-                    
-                    if revised_chunk:
-                        qa_pairs = self.extract_qa_pairs(revised_chunk)
-                        for q, a in qa_pairs:
-                            qa_parts.append(f"{q}\n{a}\n")
-                    else:
-                        qa_content = chunk.get('qa_content', '')
-                        if qa_content:
-                            qa_pairs = self.extract_qa_pairs(qa_content)
-                            for q, a in qa_pairs:
-                                qa_parts.append(f"{q}\n{a}\n")
-                
-                processed_content = "\n".join(qa_parts)
-                
-                self._update_cache(cache_key, {'qa_content': processed_content}, priority=2)
-                
-                if self.current_doc_id == doc_id:
-                    self._add_qa_section(processed_content)
-        except Exception as e:
-            logger.error(f"Error loading QA content in background: {str(e)}")
-
-    def _add_qa_section(self, processed_content):
-        if processed_content and len(processed_content.strip()) > 0:
-            existing_qa = False
-            for component in self.detail_view:
-                if hasattr(component, 'name') and component.name == 'qa_section':
-                    existing_qa = True
-                    component[1].object = processed_content  
-                    break
-                    
-            if not existing_qa:
-                qa_content_section = pn.Column(
-                    pn.pane.Markdown("### THÔNG TIN HỎI ĐÁP", styles={
-                        'color': '#2c5282',
-                        'font-size': '18px',
-                        'font-weight': 'bold',
-                        'margin-top': '15px',
-                        'margin-bottom': '10px'
-                    }),
-                    pn.pane.Markdown(
-                        processed_content,
-                        styles={
-                            'background': '#edf8f6',
-                            'padding': '20px',
-                            'border-radius': '8px',
-                            'font-size': '14px',
-                            'line-height': '1.6',
-                            'border-left': '4px solid #38b2ac',
-                            'white-space': 'pre-wrap',
-                            'word-break': 'break-word'
-                        }
-                    ),
-                    name='qa_section',
-                    sizing_mode='stretch_width'
-                )
-                
-                self.detail_view.append(qa_content_section)
         
     def show_error_message(self, message):
         """
@@ -3188,22 +2667,18 @@ class KMSAdmin(param.Parameterized):
             self.detail_view[:] = [
                 pn.pane.Markdown("### THÔNG TIN TÀI LIỆU", styles={
                     'color': '#2c5282',
-                    'font-size': '18px',
-                    'font-weight': 'bold',
-                    'margin-bottom': '10px'
+                    'font-size': '16px',
+                    'font-weight': 'bold'
                 }),
-                pn.pane.Markdown(
-                    "Chưa có tài liệu được chọn. Vui lòng chọn một tài liệu từ danh sách.", 
-                    styles={
-                        'font-style': 'italic',
-                        'color': '#718096',
-                        'background': '#f7fafc',
-                        'padding': '20px',
-                        'border-radius': '8px',
-                        'text-align': 'center',
-                        'margin': '20px 0',
-                        'border': '1px dashed #cbd5e0'
-                    }
+                pn.Row(
+                    pn.Column(
+                        pn.pane.Markdown("Chưa có tài liệu được chọn", styles={
+                            'font-style': 'italic',
+                            'color': '#666'
+                        }),
+                        sizing_mode='stretch_width'
+                    ),
+                    sizing_mode='stretch_width'
                 )
             ]
             
@@ -3228,6 +2703,7 @@ class KMSAdmin(param.Parameterized):
             logger.error(f"Error clearing detail view: {str(e)}")
 
     def approve_document(self, event=None):
+        
         try:
             if not self.data_table.selection:
                 self.show_notification("Vui lòng chọn một tài liệu để duyệt", alert_type="error")
@@ -3277,7 +2753,7 @@ class KMSAdmin(param.Parameterized):
                     
                     available_columns = [col for col in self.displayed_columns if col in self.all_data.columns]
                     self.data_table.value = self.all_data[available_columns]
-                    
+
                     new_index = None
                     for idx, row in self.all_data.iterrows():
                         if row['id'] == doc_id:
@@ -3459,10 +2935,8 @@ class KMSAdmin(param.Parameterized):
                 
                 if len(self.all_data) == 0:
                     empty_df = pd.DataFrame(columns=available_columns)
-                    self.data_table.selection = []
                     self.data_table.value = empty_df
                 else:
-                    self.data_table.selection = []
                     self.data_table.value = self.all_data[available_columns]
                     
                 logger.info(f"Updated table with {len(self.data_table.value)} rows")
@@ -3471,6 +2945,7 @@ class KMSAdmin(param.Parameterized):
                 logger.error(traceback.format_exc())
             
             try:
+                self.data_table.selection = []
                 self.clear_detail_view()
                 
                 if hasattr(self, 'conflicts_container'):
@@ -3566,7 +3041,7 @@ class KMSAdmin(param.Parameterized):
                     
                     if cards:
                         return pn.Column(*cards)
-                        
+                    
             explanation = conflict.get('explanation', 'Không có giải thích')
             conflicting_parts = conflict.get('conflicting_parts', [])
             chunk_ids = conflict.get('chunk_ids', [])
@@ -3576,13 +3051,8 @@ class KMSAdmin(param.Parameterized):
             if analyzed_at:
                 try:
                     if isinstance(analyzed_at, str):
-                        try:
-                            analyzed_at = datetime.fromisoformat(analyzed_at)
-                            formatted_time = format_date(analyzed_at)
-                        except ValueError:
-                            formatted_time = analyzed_at
-                    else:
-                        formatted_time = format_date(analyzed_at)
+                        analyzed_at = datetime.fromisoformat(analyzed_at)
+                    formatted_time = analyzed_at.strftime('%d/%m/%Y %H:%M:%S')
                 except Exception:
                     formatted_time = str(analyzed_at)
             else:
@@ -3639,7 +3109,7 @@ class KMSAdmin(param.Parameterized):
                                     created_date = doc['created_date']
                                 else:
                                     try:
-                                        created_date = format_date(doc.get('created_date'))
+                                        created_date = doc['created_date'].strftime('%d/%m/%Y %H:%M:%S')
                                     except:
                                         created_date = str(doc['created_date'])
                             
@@ -3847,7 +3317,6 @@ class KMSAdmin(param.Parameterized):
                 styles={
                     'background': '#ffffff',
                     'border': f'1px solid {severity_style["border"]}',
-                    'border-left': '4px solid #e53e3e', 
                     'border-radius': '8px',
                     'padding': '20px',
                     'margin': '15px 0',
@@ -3858,7 +3327,7 @@ class KMSAdmin(param.Parameterized):
             logger.error(f"Error creating conflict card: {str(e)}")
             logger.error(traceback.format_exc())
             return pn.pane.Markdown(f"Lỗi hiển thị thông tin mâu thuẫn: {str(e)}")
-
+    
     def _create_single_contradiction_card(self, contradiction, chunk_ids=None, analyzed_at=""):
         """
         Create a card for a single contradiction in contradictions list
@@ -3878,7 +3347,15 @@ class KMSAdmin(param.Parameterized):
             conflicting_parts = contradiction.get('conflicting_parts', [])
             severity = contradiction.get('severity', 'medium')
             
-            formatted_time = format_date(analyzed_at, default_text="Không rõ")
+            if analyzed_at:
+                try:
+                    if isinstance(analyzed_at, str):
+                        analyzed_at = datetime.fromisoformat(analyzed_at)
+                    formatted_time = analyzed_at.strftime('%d/%m/%Y %H:%M:%S')
+                except Exception:
+                    formatted_time = str(analyzed_at)
+            else:
+                formatted_time = "Không rõ"
             
             severity_colors = {
                 'high': {'bg': '#fee2e2', 'text': '#dc2626', 'border': '#f87171'},
@@ -3992,30 +3469,20 @@ class KMSAdmin(param.Parameterized):
             "ngoại bộ": "mâu thuẫn ngoại bộ"
         }
         
-        emoji_map = {
-            "content": "📝",
-            "internal": "🔄",
-            "external": "🔗",
-            "nội dung": "📝",
-            "nội bộ": "🔄", 
-            "ngoại bộ": "🔗"
-        }
-        
         label = conflict_type_labels.get(conflict_type, conflict_type)
-        emoji = emoji_map.get(conflict_type, "✅")
         
         return pn.pane.Markdown(
-            f"**Không tìm thấy {label} nào trong tài liệu này**",
+            f"**Không tìm thấy {label} nào**",
             styles={
                 'color': '#047857',
-                'font-size': '15px',
+                'font-size': '14px',
                 'margin-top': '20px',
                 'text-align': 'center',
                 'background': '#ecfdf5',
                 'padding': '20px',
                 'border-radius': '8px',
                 'border': '1px solid #a7f3d0',
-                'box-shadow': '0 2px 4px rgba(0, 0, 0, 0.05)'
+                'box-shadow': '0 1px 2px rgba(0, 0, 0, 0.05)'
             }
         )
     
@@ -4137,8 +3604,8 @@ class KMSAdmin(param.Parameterized):
                     
                     for related_id in related_docs:
                         try:
-                            formatted_time = format_date(datetime.now(), format_str='%Y-%m-%d %H:%M:%S')
-                            resolution_note = f"Tài liệu {doc_id} đã bị xóa vào {formatted_time}"
+                            resolution_note = f"Tài liệu {doc_id} đã bị xóa vào {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                            
                             resolve_query = """
                                 UPDATE chunk_conflicts
                                 SET resolved = TRUE,
@@ -4167,12 +3634,14 @@ class KMSAdmin(param.Parameterized):
                                     "external_conflicts": []
                                 }
                                 
+                                # Lọc các mâu thuẫn nội dung
                                 for conflict in conflict_info.get('content_conflicts', []):
                                     if isinstance(conflict, dict):
                                         chunk_id = conflict.get('chunk_id', '')
                                         if not chunk_id.startswith(doc_id):
                                             new_conflicts['content_conflicts'].append(conflict)
                                 
+                                # Lọc mâu thuẫn nội bộ
                                 for conflict in conflict_info.get('internal_conflicts', []):
                                     if isinstance(conflict, dict) and 'chunk_ids' in conflict:
                                         has_deleted_doc = False
@@ -4235,13 +3704,26 @@ class KMSAdmin(param.Parameterized):
                 self.show_notification("Vui lòng chọn một tài liệu", alert_type="warning")
                 return
             
-            self.request_conflict_analysis(self.current_doc_id)
+            self.show_notification("Đang tải lại mâu thuẫn...", alert_type="info")
+            
+            self.fix_conflicts_button = pn.widgets.Button(
+                name="Tải lại mâu thuẫn", 
+                button_type="primary",
+                width=150
+            )
+            self.fix_conflicts_button.on_click(self.request_reload_conflicts)
+            
+            self.data_manager.fix_existing_external_conflicts()
+            
+            self.load_conflicts_data(self.current_doc_id)
+            
+            self.show_notification("Đã tải lại thông tin mâu thuẫn thành công", alert_type="success")
             
         except Exception as e:
             logger.error(f"Error reloading conflict: {str(e)}")
             logger.error(traceback.format_exc())
-            self.show_notification(f"Lỗi khi tải lại mâu thuẫn: {str(e)}", alert_type="error")
-
+            self.show_notification(f"Lỗi khi tải lại mâu thuẫn: {str(e)}", alert_type="error")     
+    
     def handle_analysis_result(self, task_id, result_data):
         """
         Handle conflicting analysis results from API and update interface
@@ -4311,30 +3793,42 @@ class KMSAdmin(param.Parameterized):
 
     def request_conflict_analysis(self, doc_id):
         """
-        Gửi yêu cầu phân tích xung đột với các cải tiến hiệu suất
+        Request conflict analysis for a document with better concurrency and error handling
+        
+        Args:
+            doc_id (str): ID of the document to analyze
+                
+        Returns:
+            bool: True if request successful, False if error
         """
         try:
-            if hasattr(self, '_analysis_in_progress') and self._analysis_in_progress:
-                self.show_notification("Đang có phân tích đang chạy, vui lòng đợi", alert_type="warning")
-                return False
-                
             if not hasattr(self, '_analysis_mutex'):
                 import threading
                 self._analysis_mutex = threading.Lock()
                 
             if not self._analysis_mutex.acquire(blocking=False):
-                self.show_notification("Đang xử lý, vui lòng đợi", alert_type="warning")
+                self.show_notification("Phân tích mâu thuẫn đang được thực hiện, vui lòng đợi", alert_type="warning")
                 return False
                 
             try:
                 self._analysis_in_progress = True
+                self._conflict_reload_count = 0
+                self._conflicts_ui_created = False
+                self._conflicts_error_shown = False
+                self._infinite_analyze_warning_shown = False
                 
                 if not doc_id:
                     self.show_notification("Vui lòng chọn một tài liệu", alert_type="warning")
-                    self._is_analyzing = False
-                    self._analysis_mutex.release()
+                    self._analysis_in_progress = False
                     return False
                         
+                if hasattr(self, 'conflict_info_container') and self.conflict_info_container:
+                    self.conflict_info_container.clear()
+                    self.conflict_info_container.append(
+                        pn.pane.Markdown("Yêu cầu phân tích mâu thuẫn...", styles={'color': 'blue'})
+                    )
+                    self.conflict_info_container.visible = True
+                
                 if hasattr(self, 'conflicts_container'):
                     self.conflicts_container.clear()
                     self.conflicts_container.append(
@@ -4356,7 +3850,6 @@ class KMSAdmin(param.Parameterized):
                 if not document:
                     self.show_notification("Không tìm thấy tài liệu", alert_type="error")
                     self._analysis_in_progress = False
-                    self._analysis_mutex.release()
                     return False
                         
                 duplicate_group_id = document.get('duplicate_group_id')
@@ -4366,9 +3859,10 @@ class KMSAdmin(param.Parameterized):
                     try:
                         group_docs = self.data_manager.get_documents_in_group(duplicate_group_id)
                         if group_docs:
-                            docs_to_update = [doc['id'] for doc in group_docs[:3]]
+                            docs_to_update = [doc['id'] for doc in group_docs]
+                            logger.info(f"Will analyze all {len(docs_to_update)} documents in group {duplicate_group_id}")
                     except Exception as group_error:
-                        logger.error(f"Error getting group docs: {str(group_error)}")
+                        logger.error(f"Error getting documents in group: {str(group_error)}")
                 
                 for update_doc_id in docs_to_update:
                     try:
@@ -4376,84 +3870,166 @@ class KMSAdmin(param.Parameterized):
                             'conflict_analysis_status': 'Analyzing',
                             'conflict_status': 'Analyzing', 
                             'last_conflict_check': None,
-                            'modified_date': datetime.now().isoformat()
+                            'modified_date': datetime.now().isoformat()  # Set current timestamp
                         })
+                        logger.info(f"Updated conflict status for document {update_doc_id}")
                     except Exception as update_error:
-                        logger.error(f"Error updating status: {str(update_error)}")
+                        logger.error(f"Error updating document {update_doc_id}: {str(update_error)}")
                 
                 self._analysis_start_time = datetime.now()
                 
-                if not hasattr(self, 'conflict_manager'):
-                    self.conflict_manager = ConflictManager(self.data_manager, self.chroma_manager)
-                        
-                max_analysis_time = 120  # 2 phút
+                conflict_api_url = os.getenv('CONFLICT_API_URL')
                 
-                def analyze_in_background():
+                if conflict_api_url:
                     try:
-                        import signal
-                        import threading
+                        import requests
+                        response = requests.post(
+                            f"{conflict_api_url}/analyze/document",
+                            json={"doc_id": doc_id, "priority": 1, "analyze_group": True},
+                            timeout=5
+                        )
                         
-                        def timeout_handler():
-                            logger.warning(f"Analysis timeout for document {doc_id}")
-                            for update_doc_id in docs_to_update:
+                        if response.status_code == 200:
+                            result = response.json()
+                            task_id = result.get('task_id')
+                            self.show_notification(
+                                f"Đã gửi yêu cầu phân tích mâu thuẫn", 
+                                alert_type="info"
+                            )
+                            self._analysis_in_progress = False
+                            return True
+                        else:
+                            error_msg = response.json().get('message', 'Unknown error')
+                            logger.warning(f"API error: {error_msg}, falling back to local analysis")
+                        
+                            
+                    except Exception as api_error:
+                        logger.error(f"Error calling conflict analysis API: {str(api_error)}")
+                        logger.info("Falling back to local conflict analysis")
+
+                if not hasattr(self, 'conflict_manager'):
+                    try:
+                        self.conflict_manager = ConflictManager(self.data_manager, self.chroma_manager)
+                        logger.info("Created new ConflictManager instance")
+                    except Exception as cm_error:
+                        logger.error(f"Error creating ConflictManager: {str(cm_error)}")
+                        self.show_notification("Error initializing conflict manager", alert_type="error")
+                        self._analysis_in_progress = False
+                        return False
+                        
+                def analyze_in_background():
+                    total_analyzed = 0
+                    failed_docs = []
+                    
+                    try:
+                        for i, analyze_doc_id in enumerate(docs_to_update):
+                            try:
+                                logger.info(f"Starting analysis for document {analyze_doc_id} ({i+1}/{len(docs_to_update)})")
+                                
                                 try:
-                                    self.data_manager.update_document_status(update_doc_id, {
-                                        'conflict_analysis_status': 'AnalysisFailed',
-                                        'conflict_status': 'No Conflict',
-                                        'conflict_analysis_error': 'Analysis timed out'
+                                    self.data_manager.update_document_status(analyze_doc_id, {
+                                        'modified_date': datetime.now().isoformat()
                                     })
                                 except:
                                     pass
                                     
-                            try:
-                                self._analysis_timed_out = True
-                                self._analysis_doc_id = doc_id
-                            except Exception as e:
-                                logger.error(f"Error setting timeout flags: {str(e)}")
-                        
-                        timer = threading.Timer(max_analysis_time, timeout_handler)
-                        timer.daemon = True
-                        timer.start()
-                        
-                        try:
-                            success_count = 0
-                            for analyze_doc_id in docs_to_update:
+                                # Perform the analysis
+                                conflict_info = self.conflict_manager.analyze_document(analyze_doc_id)
+                                logger.info(f"Completed analysis for document {analyze_doc_id}")
+                                total_analyzed += 1
+                                
+                            except Exception as doc_analyze_error:
+                                logger.error(f"Error analyzing document {analyze_doc_id}: {str(doc_analyze_error)}")
+                                logger.error(traceback.format_exc())
+                                failed_docs.append(analyze_doc_id)
+                                
                                 try:
-                                    logger.info(f"Analyzing document {analyze_doc_id}")
-                                    self.conflict_manager.analyze_document(analyze_doc_id)
-                                    success_count += 1
-                                except Exception as doc_error:
-                                    error_msg = str(doc_error).replace('%', '%%')
-                                    logger.error(f"Error analyzing document {analyze_doc_id}: {error_msg}")
-                            
-                            if duplicate_group_id and success_count > 0:
-                                self.conflict_manager.sync_group_conflicts_by_group(duplicate_group_id)
-                            
-                            timer.cancel()
-                        except Exception as analyze_error:
-                            logger.error(f"Error in analysis: {str(analyze_error)}")
-                            timer.cancel()
+                                    self.data_manager.update_document_status(analyze_doc_id, {
+                                        'conflict_analysis_status': 'AnalysisFailed',
+                                        'conflict_status': 'No Conflict',
+                                        'conflict_analysis_error': str(doc_analyze_error)[:500]  
+                                    })
+                                except:
+                                    pass
                         
-                        try:
-                            self._analysis_completed = True
-                            self._analysis_doc_id = doc_id
-                            self._analysis_time = (datetime.now() - self._analysis_start_time).total_seconds()
-                            
-                            self.data_manager.update_document_status(doc_id, {
-                                'conflict_analysis_status': 'Analyzed',
-                                'last_conflict_check': datetime.now().isoformat()
-                            })
-                        except Exception as update_error:
-                            logger.error(f"Error updating completion status: {str(update_error)}")
+                        if len(docs_to_update) > 1 and total_analyzed > 0:
+                            try:
+                                logger.info(f"Syncing conflicts for group {duplicate_group_id}")
+                                if duplicate_group_id:
+                                    sync_result = self.conflict_manager.sync_group_conflicts_by_group(duplicate_group_id)
+                                    logger.info(f"Group sync completed with result: {sync_result}")
+                            except Exception as sync_error:
+                                logger.error(f"Error during final group sync: {str(sync_error)}")
                         
+                        def update_ui():
+                            try:
+                                self._analysis_in_progress = False
+                                self._conflict_reload_count = 0
+                                
+                                if self.current_doc_id == doc_id:
+                                    if not hasattr(self, '_is_loading_conflicts') or not self._is_loading_conflicts:
+                                        self.load_conflicts_data(doc_id)
+                                    
+                                    if hasattr(self, 'tabs'):
+                                        self.tabs.active = 3  
+                                    
+                                    analysis_duration = (datetime.now() - self._analysis_start_time).total_seconds()
+                                    if failed_docs:
+                                        self.show_notification(
+                                            f"Phân tích hoàn tất với các vấn đề. {total_analyzed} tài liệu đã phân tích, {len(failed_docs)} không thành công.",
+                                            alert_type="warning"
+                                        )
+                                    else:
+                                        self.show_notification(
+                                            f"Phân tích mâu thuẫn đã hoàn tất trong {analysis_duration:.1f} giây",
+                                            alert_type="success"
+                                        )
+                                    
+                                    document = self.data_manager.get_document_by_id(doc_id)
+                                    if document and document.get('has_conflicts', False):
+                                        if hasattr(self, 'tabs') and self.tabs.active != 3:
+                                            self.tabs.active = 3
+                                            self.show_notification(
+                                                "Đã phát hiện mâu thuẫn, chuyển sang tab mâu thuẫn",
+                                                alert_type="warning"
+                                            )
+                            except Exception as ui_error:
+                                logger.error(f"Error updating UI after analysis: {str(ui_error)}")
+                                self._analysis_in_progress = False
+                        
+                        import threading
+                        update_thread = threading.Thread(target=update_ui, daemon=True)
+                        update_thread.start()
+                        
+                    except Exception as analyze_error:
+                        logger.error(f"Error in master analysis process: {str(analyze_error)}")
+                        logger.error(traceback.format_exc())
+                        
+                        import threading
+                        def show_error():
+                            try:
+                                self._analysis_in_progress = False
+                                self.show_notification(f"Error: {str(analyze_error)}", alert_type="error")
+                                for update_doc_id in docs_to_update:
+                                    try:
+                                        self.data_manager.update_document_status(update_doc_id, {
+                                            'conflict_analysis_status': 'AnalysisFailed',
+                                            'conflict_status': 'No Conflict',
+                                            'conflict_analysis_error': str(analyze_error)[:500]
+                                        })
+                                    except:
+                                        pass
+                                self.load_conflicts_data(doc_id)
+                            except Exception as error_show_error:
+                                logger.error(f"Error showing error notification: {str(error_show_error)}")
+                    
                     finally:
-                        self._analysis_in_progress = False
                         if hasattr(self, '_analysis_mutex'):
                             try:
                                 self._analysis_mutex.release()
-                            except RuntimeError:
+                                logger.info("Released analysis mutex")
+                            except Exception:
                                 pass
-                
                 
                 import threading
                 analysis_thread = threading.Thread(target=analyze_in_background, daemon=True)
@@ -4465,7 +4041,16 @@ class KMSAdmin(param.Parameterized):
             except Exception as e:
                 logger.error(f"Error requesting conflict analysis: {str(e)}")
                 logger.error(traceback.format_exc())
-                self.show_notification(f"Lỗi: {str(e)}", alert_type="error")
+                self.show_notification(f"Error: {str(e)}", alert_type="error")
+                
+                try:
+                    if doc_id:
+                        self.data_manager.update_document_status(doc_id, {
+                            'conflict_analysis_status': 'NotAnalyzed',
+                            'conflict_status': 'No Conflict'
+                        })
+                except:
+                    pass
                 
                 self._analysis_in_progress = False
                 return False
@@ -4474,19 +4059,20 @@ class KMSAdmin(param.Parameterized):
                 if hasattr(self, '_analysis_mutex'):
                     try:
                         self._analysis_mutex.release()
+                        logger.info("Released analysis mutex")
                     except RuntimeError:
                         pass
         except Exception as outer_e:
-            logger.error(f"Outer error in conflict analysis: {str(outer_e)}")
+            logger.error(f"Outer error in conflict analysis request: {str(outer_e)}")
+            logger.error(traceback.format_exc())
+            self.show_notification(f"Unexpected error: {str(outer_e)}", alert_type="error")
             return False
-    
-    
+
     def check_chunk_status(self, force_check=False):
+        """
+        Check and update chunk and conflict status with improved timeout handling
+        """
         try:
-            if not force_check and ((hasattr(self, '_user_is_interacting') and self._user_is_interacting) or \
-            (hasattr(self, '_pause_auto_updates') and self._pause_auto_updates)):
-                return
-                
             if not self.current_doc_id:
                 return
                         
@@ -4499,7 +4085,7 @@ class KMSAdmin(param.Parameterized):
             current_time = time.time()
             last_check = getattr(self, '_last_chunk_status_check', 0)
             
-            if current_time - last_check < 5 and not force_check:  
+            if current_time - last_check < 3 and not force_check:  
                 return
                         
             self._last_chunk_status_check = current_time
@@ -4520,17 +4106,7 @@ class KMSAdmin(param.Parameterized):
                     f"has_conflicts: {has_conflicts}, "
                     f"conflict_analysis_status: {conflict_analysis_status}")
                     
-            tab_viewing = getattr(self, '_currently_viewing_tab', None)
-            if tab_viewing is None:
-                self._currently_viewing_tab = self.tabs.active
-            
             if self.tabs.active == 3:
-                recent_conflict_load = hasattr(self, '_last_conflict_load_time') and \
-                    current_time - self._last_conflict_load_time < 10
-                    
-                if recent_conflict_load and not force_check:
-                    return
-                    
                 if (conflict_analysis_status == 'Analyzing' or conflict_status == 'Analyzing'):
                     modified_date = document.get('modified_date')
                     analyzing_time_seconds = 0
@@ -4555,7 +4131,7 @@ class KMSAdmin(param.Parameterized):
                         return
                     
                     last_conflict_reload = getattr(self, '_last_conflict_reload', 0)
-                    if current_time - last_conflict_reload > 10:  
+                    if current_time - last_conflict_reload > 7: 
                         if not hasattr(self, '_conflict_reload_count'):
                             self._conflict_reload_count = 0
                             
@@ -4584,8 +4160,7 @@ class KMSAdmin(param.Parameterized):
                         self._conflicts_error_shown = True
                         self.show_notification("Phân tích mâu thuẫn thất bại. Vui lòng thử lại.", alert_type="error")
                         
-                        if (not hasattr(self, '_is_loading_conflicts') or not self._is_loading_conflicts) and \
-                        (not hasattr(self, '_conflicts_ui_created') or not self._conflicts_ui_created):
+                        if not hasattr(self, '_is_loading_conflicts') or not self._is_loading_conflicts:
                             self.load_conflicts_data(self.current_doc_id)
             
             if ((cached_status in ['Pending', 'Processing', 'Chunking'] and current_status == 'Chunked')
@@ -4593,23 +4168,26 @@ class KMSAdmin(param.Parameterized):
                 
                 self._chunk_status_cache[self.current_doc_id] = current_status
                         
-                if self.tabs.active == 1 and not self._is_loading_chunks:
-                    recent_load = hasattr(self, '_last_chunks_load_time') and \
-                        current_time - self._last_chunks_load_time < 10
-                    if not recent_load:
-                        self.load_chunks_data(self.current_doc_id)
-            
-            if self.tabs.active == 3 and self._check_conflict_update_needed() and not recent_conflict_load:
+                if self.tabs.active == 1:
+                    self.load_chunks_data(self.current_doc_id)
+                
+            if self.tabs.active == 3 and self._check_conflict_update_needed():
                 if not hasattr(self, '_is_loading_conflicts') or not self._is_loading_conflicts:
                     logger.info(f"Updating conflict info for document {self.current_doc_id}")
-                    self._last_conflict_load_time = current_time
                     self.load_conflicts_data(self.current_doc_id)
                         
         except Exception as e:
             logger.error(f"Error checking chunk status: {str(e)}")
             logger.error(traceback.format_exc())
-        
+    
     def _display_cached_conflicts(self, conflict_info, doc_id):
+        """
+        Quickly display conflict information from cache
+
+        Args:
+        conflict_info (dict): Cache conflict information
+        doc_id (str): ID of the document
+        """
         try:
             if not hasattr(self, 'conflicts_container') or self.conflicts_container is None:
                 self.conflicts_container = pn.Column(sizing_mode='stretch_width')
@@ -4637,38 +4215,22 @@ class KMSAdmin(param.Parameterized):
             internal_conflicts = conflict_info.get('internal_conflicts', [])
             external_conflicts = conflict_info.get('external_conflicts', [])
             
-            total_content_conflicts = 0
-            for conflict in content_conflicts:
-                if isinstance(conflict, dict):
-                    if "contradictions" in conflict:
-                        contradictions = conflict.get("contradictions", [])
-                        total_content_conflicts += len(contradictions) if contradictions else 1
-                    else:
-                        total_content_conflicts += 1
-                else:
-                    total_content_conflicts += 1
-            
             conflict_counts = {
-                'content': total_content_conflicts,
+                'content': len(content_conflicts),
                 'internal': len(internal_conflicts),
                 'external': len(external_conflicts),
-                'total': total_content_conflicts + len(internal_conflicts) + len(external_conflicts)
+                'total': len(content_conflicts) + len(internal_conflicts) + len(external_conflicts)
             }
-            
-            logger.info(f"Displaying conflicts: content={conflict_counts['content']}, "
-                    f"internal={conflict_counts['internal']}, external={conflict_counts['external']}, "
-                    f"total={conflict_counts['total']}")
             
             has_conflicts = conflict_counts['total'] > 0
             conflict_status = document.get('conflict_status', 'No Conflict')
-            conflict_analysis_status = document.get('conflict_analysis_status', 'NotAnalyzed')
             last_check = document.get('last_conflict_check', "Chưa kiểm tra")
             
             if last_check and last_check != "Chưa kiểm tra":
                 if isinstance(last_check, str):
                     try:
                         last_check = datetime.fromisoformat(last_check)
-                        formatted_time = format_date(last_check)
+                        formatted_time = last_check.strftime('%d/%m/%Y %H:%M:%S')
                     except ValueError:
                         formatted_time = last_check
                 else:
@@ -4676,34 +4238,20 @@ class KMSAdmin(param.Parameterized):
             else:
                 formatted_time = "Chưa kiểm tra"
             
-            analysis_status_display = "Đã phân tích" if conflict_analysis_status == "Analyzed" else conflict_analysis_status
-            
-            status_info = pn.pane.Markdown(
-                "**Đang hiển thị dữ liệu từ bộ nhớ đệm để cải thiện hiệu suất.**\n\nNhấn nút 'Phân tích mâu thuẫn' để tải lại dữ liệu mới nhất.",
-                styles={
-                    'color': '#2563eb',
-                    'background': '#dbeafe',
-                    'padding': '10px',
-                    'border-radius': '4px',
-                    'margin': '10px 0',
-                    'font-size': '10px'
-                }
-            )
-                    
             if has_conflicts:
                 status_display = "Có mâu thuẫn"
                 if conflict_status in ["Pending Review", "Resolving", "Conflict"]:
                     status_display = "Có mâu thuẫn cần xem xét"
-                
-                conflict_summary_text = f"""### Trạng thái: {status_display}
+                        
+                summary_text = f"""### Trạng thái: {status_display}
 
-                    Tổng số mâu thuẫn phát hiện: {conflict_counts['total']}
-                    - Mâu thuẫn nội dung: {conflict_counts['content']}
-                    - Mâu thuẫn nội bộ: {conflict_counts['internal']}
-                    - Mâu thuẫn ngoại bộ: {conflict_counts['external']}
+                **Tổng số mâu thuẫn phát hiện: {conflict_counts['total']}**
+                - Mâu thuẫn nội dung: {conflict_counts['content']}
+                - Mâu thuẫn nội bộ: {conflict_counts['internal']}
+                - Mâu thuẫn ngoại bộ: {conflict_counts['external']}
 
-                    Lần kiểm tra cuối: {formatted_time}"""
-                
+                *Lần kiểm tra cuối: {formatted_time}*
+                """
                 summary_styles = {
                     'background': '#fef2f2',
                     'padding': '10px',
@@ -4711,18 +4259,17 @@ class KMSAdmin(param.Parameterized):
                     'border': '1px solid #fecaca',
                     'margin-bottom': '10px'
                 }
-                
             else:
                 status_display = "Không có mâu thuẫn"
                 if conflict_status not in ["No Conflict", "Không mâu thuẫn"]:
                     status_display = conflict_status
                         
-                conflict_summary_text = f"""### Trạng thái: {status_display}
+                summary_text = f"""### Trạng thái: {status_display}
 
-                    **Không phát hiện xung đột nào trong tài liệu này.**
+                **Không phát hiện xung đột nào trong tài liệu này.**
 
-                    *Lần kiểm tra cuối: {formatted_time}*"""
-                
+                *Lần kiểm tra cuối: {formatted_time}*
+                """
                 summary_styles = {
                     'background': '#f0fdf4',
                     'padding': '10px',
@@ -4732,31 +4279,25 @@ class KMSAdmin(param.Parameterized):
                 }
             
             conflict_summary = pn.pane.Markdown(
-                conflict_summary_text,
+                summary_text,
                 styles=summary_styles
             )
             
             reload_button = pn.widgets.Button(
-                name="🔍 Phân tích mâu thuẫn",
+                name="Phân tích mâu thuẫn",
                 button_type="primary",
-                button_style="solid",
-                width=180,
-                height=40,
-                styles={
-                    'font-weight': 'bold',
-                    'font-size': '14px',
-                    'box-shadow': '0 2px 4px rgba(0,0,0,0.1)',
-                    'background-color': '#1e78c8',
-                    'border-color': '#1e78c8'
-                }
+                width=160
             )
             reload_button.on_click(lambda event: self.request_conflict_analysis(doc_id))
             
             model_status = pn.pane.Markdown(
-                "**Model phân tích:** OpenAI",
+                "**Model phân tích:** OpenAI (từ cache)",
                 styles={
                     'font-size': '12px',
                     'color': '#4a5568',
+                    'text-align': 'right',
+                    'margin-top': '5px',
+                    'margin-bottom': '15px',
                     'padding': '5px 10px',
                     'background': '#edf2f7',
                     'border-radius': '4px',
@@ -4766,13 +4307,11 @@ class KMSAdmin(param.Parameterized):
             
             self.conflicts_container.append(
                 pn.Row(
-                    pn.pane.Markdown("### Thông tin mâu thuẫn", styles={
+                    pn.pane.Markdown("### Thông tin mâu thuẫn (từ cache)", styles={
                         'color': '#2c5282',
                         'font-size': '18px',
                         'margin-bottom': '5px'
                     }),
-                    pn.layout.HSpacer(),
-                    model_status,
                     pn.Spacer(width=20),
                     reload_button,
                     align='center',
@@ -4780,14 +4319,28 @@ class KMSAdmin(param.Parameterized):
                 )
             )
             
-            self.conflicts_container.append(status_info)
             self.conflicts_container.append(conflict_summary)
+            self.conflicts_container.append(pn.Row(model_status, align='end'))
+            
+            self.conflicts_container.append(
+                pn.pane.Markdown(
+                    "**Đang hiển thị dữ liệu từ bộ nhớ đệm để cải thiện hiệu suất.**\n\nNhấn nút 'Phân tích mâu thuẫn' để tải lại dữ liệu mới nhất.",
+                    styles={
+                        'color': '#2563eb',
+                        'background': '#dbeafe',
+                        'padding': '10px',
+                        'border-radius': '4px',
+                        'margin': '10px 0',
+                        'font-size': '14px'
+                    }
+                )
+            )
             
             content_conflicts_container = pn.Column(name="Mâu thuẫn nội dung")
             internal_conflicts_container = pn.Column(name="Mâu thuẫn nội bộ")
             external_conflicts_container = pn.Column(name="Mâu thuẫn ngoại bộ")
             
-            if conflict_counts['content'] > 0:
+            if content_conflicts:
                 content_conflicts_container.append(
                     pn.pane.Markdown(
                         f"**Đã phát hiện {conflict_counts['content']} mâu thuẫn nội dung chunk**",
@@ -4797,44 +4350,20 @@ class KMSAdmin(param.Parameterized):
                             'font-weight': 'bold',
                             'margin': '10px 0 20px 0',
                             'background': '#edf7ff',
-                            'padding': '12px',
-                            'border-radius': '6px',
+                            'padding': '10px',
+                            'border-radius': '4px',
                             'border-left': '4px solid #2563eb'
                         }
                     )
                 )
-                
-                displayed_conflicts = 0
-                max_conflicts_to_display = 10
-                
-                for conflict in content_conflicts:
-                    if displayed_conflicts >= max_conflicts_to_display:
-                        break
-                        
-                    if isinstance(conflict, dict):
-                        if "contradictions" in conflict:
-                            contradictions = conflict.get("contradictions", [])
-                            for contradiction in contradictions:
-                                if displayed_conflicts >= max_conflicts_to_display:
-                                    break
-                                contradiction_card = self._create_single_contradiction_card(
-                                    contradiction,
-                                    conflict.get("chunk_ids", []),
-                                    conflict.get("analyzed_at", "")
-                                )
-                                content_conflicts_container.append(contradiction_card)
-                                displayed_conflicts += 1
-                        else:
-                            conflict_card = self._create_conflict_card(conflict, "content")
-                            content_conflicts_container.append(conflict_card)
-                            displayed_conflicts += 1
-                    else:
-                        logger.warning(f"Invalid content conflict format: {type(conflict)}")
-                        
-                if conflict_counts['content'] > displayed_conflicts:
+                for i, conflict in enumerate(content_conflicts[:10]): 
+                    conflict_card = self._create_conflict_card(conflict, "content")
+                    content_conflicts_container.append(conflict_card)
+                    
+                if len(content_conflicts) > 10:
                     content_conflicts_container.append(
                         pn.pane.Markdown(
-                            f"**...và {conflict_counts['content'] - displayed_conflicts} mâu thuẫn khác. Nhấn 'Phân tích mâu thuẫn' để xem đầy đủ.**",
+                            f"**...và {len(content_conflicts) - 10} mâu thuẫn khác. Nhấn 'Phân tích mâu thuẫn' để xem đầy đủ.**",
                             styles={
                                 'color': '#4b5563',
                                 'font-size': '14px',
@@ -4848,7 +4377,7 @@ class KMSAdmin(param.Parameterized):
                     self._create_no_conflicts_message("nội dung")
                 )
                 
-            if conflict_counts['internal'] > 0:
+            if internal_conflicts:
                 internal_conflicts_container.append(
                     pn.pane.Markdown(
                         f"**Đã phát hiện {conflict_counts['internal']} mâu thuẫn nội bộ**",
@@ -4858,8 +4387,8 @@ class KMSAdmin(param.Parameterized):
                             'font-weight': 'bold',
                             'margin': '10px 0 20px 0',
                             'background': '#edf7ff',
-                            'padding': '12px',
-                            'border-radius': '6px',
+                            'padding': '10px',
+                            'border-radius': '4px',
                             'border-left': '4px solid #2563eb'
                         }
                     )
@@ -4885,7 +4414,7 @@ class KMSAdmin(param.Parameterized):
                     self._create_no_conflicts_message("nội bộ")
                 )
                 
-            if conflict_counts['external'] > 0:
+            if external_conflicts:
                 external_conflicts_container.append(
                     pn.pane.Markdown(
                         f"**Đã phát hiện {conflict_counts['external']} mâu thuẫn ngoại bộ**",
@@ -4895,8 +4424,8 @@ class KMSAdmin(param.Parameterized):
                             'font-weight': 'bold',
                             'margin': '10px 0 20px 0',
                             'background': '#edf7ff',
-                            'padding': '12px',
-                            'border-radius': '6px',
+                            'padding': '10px',
+                            'border-radius': '4px',
                             'border-left': '4px solid #2563eb'
                         }
                     )
@@ -4930,7 +4459,7 @@ class KMSAdmin(param.Parameterized):
             )
             
             self.conflicts_container.append(conflict_tabs)
-                
+            
             total_conflicts = conflict_counts['total']
             if total_conflicts > 0:
                 summary = f"Tổng số mâu thuẫn: {total_conflicts} "
@@ -4938,6 +4467,468 @@ class KMSAdmin(param.Parameterized):
                 self.show_info_message(summary)
             else:
                 self.show_info_message("Không phát hiện xung đột trong tài liệu này")
+            
+        except Exception as e:
+            logger.error(f"Error displaying cached conflicts: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+            self._is_loading_conflicts = False
+            self.load_conflicts_data(doc_id)
+    
+    def load_conflicts_data(self, doc_id):
+        """
+        Load and display conflict information for a document with improved performance
+        
+        Args:
+            doc_id (str): The ID of the document to load conflicts for
+        """
+        try:
+            cache_key = f"{doc_id}_conflicts"
+            current_time = time.time()
+            cache_timestamp = getattr(self, '_conflict_cache_timestamps', {}).get(cache_key, 0)
+            use_cache = False
+            
+            if hasattr(self, '_conflict_info_cache') and cache_key in self._conflict_info_cache:
+                if current_time - cache_timestamp < 10: 
+                    document = self.data_manager.get_document_by_id(doc_id)
+                    if document:
+                        conflict_status = document.get('conflict_status', 'No Conflict')
+                        conflict_analysis_status = document.get('conflict_analysis_status', 'NotAnalyzed')
+                        if conflict_status != 'Analyzing' and conflict_analysis_status != 'Analyzing':
+                            use_cache = True
+                            
+            if hasattr(self, '_is_loading_conflicts') and self._is_loading_conflicts:
+                if use_cache:
+                    logger.info(f"Using cached conflicting information for {doc_id}")
+                    conflict_info = self._conflict_info_cache[cache_key]
+                    self._display_cached_conflicts(conflict_info, doc_id)
+                    return
+                else:
+                    logger.info(f"Already loading conflict for {doc_id}, ignoring duplicate request")
+                    return
+                
+            self._is_loading_conflicts = True
+                    
+            if hasattr(self, 'conflicts_container'):
+                self.conflicts_container.clear()
+            else:
+                self.conflicts_container = pn.Column(sizing_mode='stretch_width')
+                        
+            self.clear_messages()
+            
+            if not hasattr(self, '_conflict_loading_ui'):
+                loading_spinner = pn.indicators.LoadingSpinner(value=True, size=40)
+                loading_message = pn.pane.Markdown("### Đang tải thông tin mâu thuẫn...", 
+                                                styles={'color': '#4A5568', 'text-align': 'center', 'padding': '20px'})
+                self._conflict_loading_ui = pn.Column(loading_spinner, loading_message, align='center')
+            
+            self.conflicts_container.append(self._conflict_loading_ui)
+                            
+            document = self.data_manager.get_document_by_id(doc_id)
+            if not document:
+                self.show_error_message("Không tìm thấy tài liệu")
+                self.conflicts_container.clear()
+                self.conflicts_container.append(
+                    pn.pane.Markdown(
+                        "### Tài liệu không tồn tại hoặc đã bị xóa",
+                        styles={
+                            'color': '#E53E3E',
+                            'text-align': 'center',
+                            'padding': '15px',
+                            'background': '#FFF5F5',
+                            'border-radius': '8px',
+                            'margin': '10px 0'
+                        }
+                    )
+                )
+                self._is_loading_conflicts = False
+                return
+
+            conflict_analysis_status = document.get('conflict_analysis_status', 'NotAnalyzed')
+            conflict_status = document.get('conflict_status', 'No Conflict')
+            has_conflicts = document.get('has_conflicts', False)
+            duplicate_group_id = document.get('duplicate_group_id')
+            
+            logger.info(f"Document {doc_id} - conflict_status: {conflict_status}, " 
+                        f"has_conflicts: {has_conflicts}, "
+                        f"conflict_analysis_status: {conflict_analysis_status}, "
+                        f"duplicate_group_id: {duplicate_group_id}")
+            
+            if duplicate_group_id and (conflict_status == 'Analyzing' or has_conflicts):
+                if not hasattr(self, 'conflict_manager'):
+                    self.conflict_manager = ConflictManager(self.data_manager, self.chroma_manager)
+                        
+                sync_result = self.conflict_manager.sync_group_conflicts(doc_id)
+                logger.info(f"Synced conflicts for document {doc_id} in group {duplicate_group_id}")
+                
+                document = self.data_manager.get_document_by_id(doc_id)
+                if document:
+                    conflict_status = document.get('conflict_status', conflict_status)
+                    has_conflicts = document.get('has_conflicts', has_conflicts)
+                    conflict_analysis_status = document.get('conflict_analysis_status', conflict_analysis_status)
+                        
+            analyzing_time = None
+            long_analyzing = False
+            analyzing_seconds = 0
+                    
+            if conflict_analysis_status == 'Analyzing' or conflict_status == 'Analyzing':
+                last_status_update = document.get('modified_date')
+                if last_status_update:
+                    if isinstance(last_status_update, str):
+                        try:
+                            last_status_update = datetime.fromisoformat(last_status_update)
+                        except:
+                            last_status_update = None
+                                
+                    if last_status_update:
+                        analyzing_seconds = (datetime.now() - last_status_update).total_seconds()
+                        if analyzing_seconds > 180:  
+                            long_analyzing = True
+                            analyzing_time = int(analyzing_seconds / 60)
+            
+            if long_analyzing:
+                self._stop_infinite_analyzing(doc_id)
+                self._is_loading_conflicts = False
+                return
+
+            elif conflict_analysis_status == 'Analyzing' or conflict_status == 'Analyzing':
+                self.conflicts_container.clear()
+                self.conflicts_container.append(
+                    pn.Column(
+                        pn.indicators.LoadingSpinner(value=True, size=40),
+                        pn.pane.Markdown("### Đang phân tích mâu thuẫn ...\nVui lòng đợi...", styles={
+                            'color': '#4A5568',
+                            'text-align': 'center',
+                            'padding': '20px',
+                            'background': '#EDF2F7',
+                            'border-radius': '8px',
+                            'margin': '20px 0'
+                        }),
+                        align='center'
+                    )
+                )
+                
+                if analyzing_seconds > 60: 
+                    cancel_button = pn.widgets.Button(
+                        name="Hủy phân tích",
+                        button_type="danger",
+                        width=120
+                    )
+                    cancel_button.on_click(lambda event: self._stop_infinite_analyzing(doc_id))
+                    
+                    self.conflicts_container.append(
+                        pn.Row(
+                            pn.pane.Markdown(f"Phân tích đang chạy trong {int(analyzing_seconds)}s", 
+                                            styles={'color': '#718096', 'font-size': '14px'}),
+                            cancel_button,
+                            align='center'
+                        )
+                    )
+                
+                if (not hasattr(self, '_conflict_reload_count') or self._conflict_reload_count < 5):
+                    if hasattr(self, '_conflict_reload_count'):
+                        self._conflict_reload_count += 1
+                    else:
+                        self._conflict_reload_count = 1
+                    
+                    def delayed_reload():
+                        if (hasattr(self, 'current_doc_id') and self.current_doc_id == doc_id and
+                            hasattr(self, 'tabs') and self.tabs.active == 3):
+                            logger.info(f"Auto-reloading conflicts (attempt {self._conflict_reload_count})")
+                            if not hasattr(self, '_is_loading_conflicts') or not self._is_loading_conflicts:
+                                self.load_conflicts_data(doc_id)
+                    
+                    pn.state.add_periodic_callback(delayed_reload, 5000, count=1)
+                    logger.info(f"Schedule reload after 5 seconds for document {doc_id}")
+                
+                self._is_loading_conflicts = False
+                return
+                    
+            conflict_info = document.get('conflict_info', '{}')
+            if conflict_info is None:
+                conflict_info = '{}'
+
+            try:
+                if isinstance(conflict_info, str):
+                    conflict_info = json.loads(conflict_info)
+            except json.JSONDecodeError:
+                logger.error(f"Invalid JSON in conflict_info: {conflict_info}")
+                conflict_info = {
+                    "content_conflicts": [],
+                    "internal_conflicts": [],
+                    "external_conflicts": []
+                }
+
+            if not isinstance(conflict_info, dict):
+                conflict_info = {
+                    "content_conflicts": [],
+                    "internal_conflicts": [],
+                    "external_conflicts": []
+                }
+            
+            if not hasattr(self, '_conflict_info_cache'):
+                self._conflict_info_cache = {}
+            self._conflict_info_cache[cache_key] = conflict_info
+            
+            if not hasattr(self, '_conflict_cache_timestamps'):
+                self._conflict_cache_timestamps = {}
+            self._conflict_cache_timestamps[cache_key] = current_time
+            
+            content_conflicts = conflict_info.get('content_conflicts', [])
+            internal_conflicts = conflict_info.get('internal_conflicts', [])
+            external_conflicts = conflict_info.get('external_conflicts', [])
+            
+            logger.info(f"Document {doc_id} - content_conflicts: {len(content_conflicts)}, " 
+                    f"internal_conflicts: {len(internal_conflicts)}, "
+                    f"external_conflicts: {len(external_conflicts)}")
+            
+            if not hasattr(self, 'conflict_manager'):
+                self.conflict_manager = ConflictManager(self.data_manager, self.chroma_manager)
+                        
+            conflict_counts = {
+                'content': len(content_conflicts),
+                'internal': len(internal_conflicts),
+                'external': len(external_conflicts),
+                'total': len(content_conflicts) + len(internal_conflicts) + len(external_conflicts)
+            }
+            
+            has_conflicts = has_conflicts or conflict_counts['total'] > 0
+            last_check = document.get('last_conflict_check')
+            
+            if has_conflicts != bool(conflict_counts['total'] > 0):
+                has_conflicts = bool(conflict_counts['total'] > 0)
+                conflict_status = 'Pending Review' if has_conflicts else 'No Conflict'
+                
+                try:
+                    self.data_manager.update_document_status(doc_id, {
+                        'has_conflicts': has_conflicts,
+                        'conflict_status': conflict_status,
+                        'needs_conflict_reanalysis': False 
+                    })
+                except Exception as update_error:
+                    logger.error(f"Error updating conflict status: {str(update_error)}")
+            
+            if last_check:
+                if isinstance(last_check, str):
+                    try:
+                        last_check = datetime.fromisoformat(last_check)
+                        formatted_time = last_check.strftime('%d/%m/%Y %H:%M:%S')
+                    except ValueError:
+                        formatted_time = last_check
+                else:
+                    formatted_time = str(last_check)
+            else:
+                formatted_time = "Chưa kiểm tra"
+            
+            if has_conflicts:
+                status_display = "Có mâu thuẫn"
+                if conflict_status in ["Pending Review", "Resolving", "Conflict"]:
+                    status_display = "Có mâu thuẫn cần xem xét"
+                        
+                summary_text = f"""### Trạng thái: {status_display}
+
+                **Tổng số mâu thuẫn phát hiện: {conflict_counts['total']}**
+                - Mâu thuẫn nội dung: {conflict_counts['content']}
+                - Mâu thuẫn nội bộ: {conflict_counts['internal']}
+                - Mâu thuẫn ngoại bộ: {conflict_counts['external']}
+
+                *Lần kiểm tra cuối: {formatted_time}*
+                """
+                summary_styles = {
+                    'background': '#fef2f2',
+                    'padding': '10px',
+                    'border-radius': '4px',
+                    'border': '1px solid #fecaca',
+                    'margin-bottom': '10px'
+                }
+            else:
+                status_display = "Không có mâu thuẫn"
+                if conflict_status not in ["No Conflict", "Không mâu thuẫn"]:
+                    status_display = conflict_status
+                        
+                summary_text = f"""### Trạng thái: {status_display}
+
+                **Không phát hiện xung đột nào trong tài liệu này.**
+
+                *Lần kiểm tra cuối: {formatted_time}*
+                """
+                summary_styles = {
+                    'background': '#f0fdf4',
+                    'padding': '10px',
+                    'border-radius': '4px',
+                    'border': '1px solid #bbf7d0',
+                    'margin-bottom': '10px'
+                }
+            
+            # Tạo các phần tử UI
+            conflict_summary = pn.pane.Markdown(
+                summary_text,
+                styles=summary_styles
+            )
+            
+            reload_button = pn.widgets.Button(
+                name="Phân tích mâu thuẫn",
+                button_type="primary",
+                width=160
+            )
+            reload_button.on_click(lambda event: self.request_conflict_analysis(doc_id))
+            
+            self.conflicts_container.clear()
+            
+            model_status = pn.pane.Markdown(
+                "**Model phân tích:** OpenAI",
+                styles={
+                    'font-size': '12px',
+                    'color': '#4a5568',
+                    'text-align': 'right',
+                    'margin-top': '5px',
+                    'margin-bottom': '15px',
+                    'padding': '5px 10px',
+                    'background': '#edf2f7',
+                    'border-radius': '4px',
+                    'display': 'inline-block'
+                }
+            )
+            
+            content_conflicts_container = pn.Column(name="Mâu thuẫn nội dung")
+            internal_conflicts_container = pn.Column(name="Mâu thuẫn nội bộ")
+            external_conflicts_container = pn.Column(name="Mâu thuẫn ngoại bộ")
+
+            if content_conflicts:
+                content_conflicts_container.append(
+                    pn.pane.Markdown(
+                        f"**Đã phát hiện {conflict_counts['content']} mâu thuẫn nội dung chunk**",
+                        styles={
+                            'color': '#2563eb',
+                            'font-size': '16px',
+                            'font-weight': 'bold',
+                            'margin': '10px 0 20px 0',
+                            'background': '#edf7ff',
+                            'padding': '10px',
+                            'border-radius': '4px',
+                            'border-left': '4px solid #2563eb'
+                        }
+                    )
+                )
+                for i, conflict in enumerate(content_conflicts[:20]): 
+                    conflict_card = self._create_conflict_card(conflict, "content")
+                    content_conflicts_container.append(conflict_card)
+                    
+                if len(content_conflicts) > 20:
+                    content_conflicts_container.append(
+                        pn.pane.Markdown(
+                            f"**...và {len(content_conflicts) - 20} mâu thuẫn khác.**",
+                            styles={
+                                'color': '#4b5563',
+                                'font-size': '14px',
+                                'margin': '10px 0',
+                                'text-align': 'center'
+                            }
+                        )
+                    )
+            else:
+                content_conflicts_container.append(
+                    self._create_no_conflicts_message("nội dung")
+                )
+
+            if internal_conflicts:
+                internal_conflicts_container.append(
+                    pn.pane.Markdown(
+                        f"**Đã phát hiện {conflict_counts['internal']} mâu thuẫn nội bộ**",
+                        styles={
+                            'color': '#2563eb',
+                            'font-size': '16px',
+                            'font-weight': 'bold',
+                            'margin': '10px 0 20px 0',
+                            'background': '#edf7ff',
+                            'padding': '10px',
+                            'border-radius': '4px',
+                            'border-left': '4px solid #2563eb'
+                        }
+                    )
+                )
+                for i, conflict in enumerate(internal_conflicts[:20]):
+                    conflict_card = self._create_conflict_card(conflict, "internal")
+                    internal_conflicts_container.append(conflict_card)
+                    
+                if len(internal_conflicts) > 20:
+                    internal_conflicts_container.append(
+                        pn.pane.Markdown(
+                            f"**...và {len(internal_conflicts) - 20} mâu thuẫn khác.**",
+                            styles={
+                                'color': '#4b5563',
+                                'font-size': '14px',
+                                'margin': '10px 0',
+                                'text-align': 'center'
+                            }
+                        )
+                    )
+            else:
+                internal_conflicts_container.append(
+                    self._create_no_conflicts_message("nội bộ")
+                )
+
+            if external_conflicts:
+                external_conflicts_container.append(
+                    pn.pane.Markdown(
+                        f"**Đã phát hiện {conflict_counts['external']} mâu thuẫn ngoại bộ**",
+                        styles={
+                            'color': '#2563eb',
+                            'font-size': '16px',
+                            'font-weight': 'bold',
+                            'margin': '10px 0 20px 0',
+                            'background': '#edf7ff',
+                            'padding': '10px',
+                            'border-radius': '4px',
+                            'border-left': '4px solid #2563eb'
+                        }
+                    )
+                )
+                for i, conflict in enumerate(external_conflicts[:20]):
+                    conflict_card = self._create_conflict_card(conflict, "external")
+                    external_conflicts_container.append(conflict_card)
+                    
+                if len(external_conflicts) > 20:
+                    external_conflicts_container.append(
+                        pn.pane.Markdown(
+                            f"**...và {len(external_conflicts) - 20} mâu thuẫn khác.**",
+                            styles={
+                                'color': '#4b5563',
+                                'font-size': '14px',
+                                'margin': '10px 0',
+                                'text-align': 'center'
+                            }
+                        )
+                    )
+            else:
+                external_conflicts_container.append(
+                    self._create_no_conflicts_message("ngoại bộ")
+                )
+
+            conflict_tabs = pn.Tabs(
+                ("Mâu thuẫn nội dung", content_conflicts_container),
+                ("Mâu thuẫn nội bộ", internal_conflicts_container),
+                ("Mâu thuẫn ngoại bộ", external_conflicts_container),
+                sizing_mode='stretch_width'
+            )
+            
+            self.conflicts_container.append(
+                pn.Row(
+                    pn.pane.Markdown("### Thông tin mâu thuẫn", styles={
+                        'color': '#2c5282',
+                        'font-size': '18px',
+                        'margin-bottom': '5px'
+                    }),
+                    pn.Spacer(width=20),
+                    reload_button,
+                    align='center',
+                    sizing_mode='stretch_width'
+                )
+            )
+            
+            self.conflicts_container.append(conflict_summary)
+            self.conflicts_container.append(pn.Row(model_status, align='end'))
+            self.conflicts_container.append(conflict_tabs)
             
             if conflict_analysis_status == 'NotAnalyzed' and 'conflict_info' not in document:
                 notice = pn.pane.Markdown(
@@ -4956,16 +4947,7 @@ class KMSAdmin(param.Parameterized):
                 analyze_button = pn.widgets.Button(
                     name="Phân tích mâu thuẫn",
                     button_type="primary",
-                    button_style="solid",
-                    width=180,
-                    height=40,
-                    styles={
-                        'font-weight': 'bold',
-                        'font-size': '14px',
-                        'box-shadow': '0 2px 4px rgba(0,0,0,0.1)',
-                        'background-color': '#1e78c8',
-                        'border-color': '#1e78c8'
-                    }
+                    width=160
                 )
                 analyze_button.on_click(lambda event: self.request_conflict_analysis(doc_id))
                 
@@ -4987,6 +4969,14 @@ class KMSAdmin(param.Parameterized):
             except Exception as reset_error:
                 logger.error(f"Error resetting reanalysis flag: {str(reset_error)}")
 
+            total_conflicts = conflict_counts['total']
+            if total_conflicts > 0:
+                summary = f"Tổng số mâu thuẫn: {total_conflicts} "
+                summary += f"(Nội dung: {conflict_counts['content']}, Nội bộ: {conflict_counts['internal']}, Ngoại bộ: {conflict_counts['external']})"
+                self.show_info_message(summary)
+            else:
+                self.show_info_message("Không phát hiện xung đột trong tài liệu này")
+                
             self._conflict_reload_count = 0
 
         except Exception as e:
@@ -5018,13 +5008,13 @@ class KMSAdmin(param.Parameterized):
             if hasattr(self, 'delete_button'):
                 self.delete_button.visible = True
             self._is_loading_conflicts = False
-    
+
     def setup_conflict_analysis_monitoring(self, period=2000):
         """
-        Set up conflict analysis progress tracking
+            Set up conflict analysis progress tracking
 
-        Args:
-        period (int): Check period (ms)
+            Args:
+            period (int): Check period (ms)
         """
         try:
             logger.info(f"Setting up conflict analysis monitoring every {period}ms")
@@ -5034,88 +5024,15 @@ class KMSAdmin(param.Parameterized):
                     self.conflict_monitoring_callback.stop()
                 except Exception:
                     pass
-                
-            self._analysis_completed = False
-            self._analysis_timed_out = False
-            self._analysis_doc_id = None
-            self._analysis_time = 0
-            
-            def check_analysis_state():
-                """Check both regular conflict progress and analysis completion flags"""
-                try:
-                    self.monitor_conflict_analysis()
                     
-                    if hasattr(self, '_analysis_completed') and self._analysis_completed:
-                        doc_id = getattr(self, '_analysis_doc_id', None)
-                        if doc_id and doc_id == self.current_doc_id:
-                            analysis_time = getattr(self, '_analysis_time', 0)
-                            
-                            if hasattr(self, 'tabs') and self.tabs.active == 3:
-                                if not hasattr(self, '_is_loading_conflicts') or not self._is_loading_conflicts:
-                                    self.load_conflicts_data(doc_id)
-                            
-                            self.show_notification(
-                                f"Phân tích mâu thuẫn hoàn tất trong {analysis_time:.1f} giây",
-                                alert_type="success"
-                            )
-                        
-                        self._analysis_completed = False
-                        self._analysis_doc_id = None
-                        
-                    if hasattr(self, '_analysis_timed_out') and self._analysis_timed_out:
-                        doc_id = getattr(self, '_analysis_doc_id', None)
-                        if doc_id and doc_id == self.current_doc_id:
-                            if hasattr(self, 'tabs') and self.tabs.active == 3:
-                                if not hasattr(self, '_is_loading_conflicts') or not self._is_loading_conflicts:
-                                    self.load_conflicts_data(doc_id)
-                            
-                            self.show_notification(
-                                "Phân tích mâu thuẫn đã hết thời gian chờ",
-                                alert_type="error",
-                                duration=5000
-                            )
-                        
-                        self._analysis_timed_out = False
-                        self._analysis_doc_id = None
-                    
-                except Exception as e:
-                    logger.error(f"Error in conflict analysis monitoring: {str(e)}")
-            
-            try:
-                if hasattr(pn.state, 'add_periodic_callback'):
-                    self.conflict_monitoring_callback = pn.state.add_periodic_callback(
-                        check_analysis_state,
-                        period
-                    )
-                elif hasattr(pn, 'callbacks') and hasattr(pn.callbacks, 'periodic'):
-                    self.conflict_monitoring_callback = pn.callbacks.periodic(
-                        period, 
-                        check_analysis_state
-                    )
-                else:
-                    logger.warning("Panel periodic callbacks not available, using threading for monitoring")
-                    import threading
-                    
-                    def repeating_monitor():
-                        check_analysis_state()
-                        
-                        if hasattr(self, '_monitoring_active') and self._monitoring_active:
-                            threading.Timer(period/1000, repeating_monitor).start()
-                    
-                    self._monitoring_active = True
-                    monitoring_thread = threading.Timer(period/1000, repeating_monitor)
-                    monitoring_thread.daemon = True
-                    monitoring_thread.start()
-                    
-                    self.conflict_monitoring_callback = monitoring_thread
-                    
-            except Exception as cb_error:
-                logger.error(f"Could not set up conflict monitoring: {str(cb_error)}")
-            
+            self.conflict_monitoring_callback = pn.state.add_periodic_callback(
+                self.monitor_conflict_analysis,
+                period
+            )
         except Exception as e:
             logger.error(f"Error setting up conflict analysis monitoring: {str(e)}")
             logger.error(traceback.format_exc())
-        
+
     def monitor_conflict_analysis(self):
         """
         Track conflict analysis progress and automatically update UI with better coordination
@@ -5300,4 +5217,5 @@ class KMSAdmin(param.Parameterized):
             logger.error(traceback.format_exc())
 
     def get_layout(self):
+        
         return self.layout

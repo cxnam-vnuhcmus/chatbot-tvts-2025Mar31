@@ -301,7 +301,7 @@ class ChromaManager:
                     'chunk_topic': metadata.get('chunk_topic'),
                     'paragraph': metadata.get('paragraph'),
                     'original_text': metadata.get('original_text'), 
-                    'qa_content': content,
+                    'revised_chunk': metadata.get('revised_chunk'),
                     'metadata': metadata,
                     'unit': metadata.get('unit')
                 }
@@ -376,7 +376,6 @@ class ChromaManager:
             logger.error(traceback.format_exc())
             return False
     
-
     def update_chunk_metadata(self, chunk_id: str, metadata: dict) -> bool:
         """
         Update chunk metadata in ChromaDB and trigger conflict re-analysis when necessary.

@@ -4,6 +4,7 @@ import re
 import traceback
 import Levenshtein
 from datetime import datetime
+import pandas as pd
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -14,18 +15,35 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def format_date(date):
+def format_date(date_value, default_text="N/A", format_str="%d/%m/%Y %H:%M:%S"):
     """
-    Format a datetime object into a string.
-
+    Format date value securely, handling both string and datetime objects
+    
     Args:
-        date (datetime): The datetime object to be formatted.
-
+        date_value: The date value to format, can be string or datetime
+        default_text (str): Text to return if date_value is None, default is "N/A"
+        format_str (str): Format string for strftime, default is "%d/%m/%Y %H:%M:%S"
+        
     Returns:
-        str: The formatted date as a string in 'YYYY-MM-DD HH:MM:SS' format,
-            or an empty string if the date is None.
+        str: Formatted date string
     """
-    return date.strftime("%Y-%m-%d %H:%M:%S") if date else ""
+    if date_value is None or pd.isna(date_value):
+        return default_text
+        
+    try:
+        if isinstance(date_value, str):
+            try:
+                dt_obj = datetime.fromisoformat(date_value.replace('Z', '+00:00'))
+                return dt_obj.strftime(format_str)
+            except (ValueError, TypeError):
+                return date_value
+        elif hasattr(date_value, 'strftime'):  
+            return date_value.strftime(format_str)
+        else:
+            return str(date_value)
+    except Exception as e:
+        logger.warning(f"Error formatting date: {str(e)}")
+        return str(date_value) if date_value else default_text
 
 def format_content_markdown(content: str) -> str:
     """
